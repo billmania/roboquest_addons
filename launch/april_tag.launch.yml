@@ -11,7 +11,7 @@ launch:
       namespace: apriltag
       remap:
       - from: /apriltag/image_rect
-        to: /rq_camera_node0/image
+        to: /rq_camera_node0/image_raw
       - from: /apriltag/camera_info
         to: /rq_camera_node0/camera_info
       param:
