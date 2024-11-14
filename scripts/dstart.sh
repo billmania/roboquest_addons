@@ -9,7 +9,7 @@ NAME=rq_addons
 
 printf "Starting %s on %s\n" "$IMAGE" "$DOCKER_HOST"
 
-docker run -it --rm \
+docker run -d --rm \
         --privileged \
         --network host \
         --ipc host \
