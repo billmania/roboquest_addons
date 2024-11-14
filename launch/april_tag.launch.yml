@@ -1,0 +1,18 @@
+launch:
+- node_container:
+    pkg: rclcpp_components
+    exec: component_container
+    name: apriltag_container
+    namespace: ""
+    composable_node:
+    - pkg: apriltag_ros
+      plugin: AprilTagNode
+      name: apriltag
+      namespace: apriltag
+      remap:
+      - from: /apriltag/image_rect
+        to: /rq_camera_node0/image_raw
+      - from: /apriltag/camera_info
+        to: /rq_camera_node0/camera_info
+      param:
+      - from: "$(find-pkg-share roboquest_addons)/config/tags_36h11.yaml"

@@ -7,7 +7,7 @@
 IMAGE=$1
 NAME=rq_addons
 
-printf "Starting %s on %s\n" "$IMAGE" $DOCKER_HOST
+printf "Starting %s on %s\n" "$IMAGE" "$DOCKER_HOST"
 
 docker run -d --rm \
         --privileged \
