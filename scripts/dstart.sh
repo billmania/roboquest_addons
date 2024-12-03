@@ -7,13 +7,14 @@
 IMAGE=$1
 NAME=rq_addons
 
-printf "Starting %s on %s\n" "$IMAGE" "$DOCKER_HOST"
+printf "Starting %s on %s\n" "$IMAGE" "$(docker context show)"
 
 docker run -d --rm \
         --privileged \
         --network host \
         --ipc host \
         --env "ROS_DOMAIN_ID=72" \
+        --device /dev/i2c-6:/dev/i2c-6 \
         --device /dev/ttyUSB0:/dev/ttyUSB0 \
         -v /dev/shm:/dev/shm \
         -v /var/run/dbus:/var/run/dbus \
