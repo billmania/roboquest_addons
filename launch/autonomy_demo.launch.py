@@ -23,6 +23,7 @@ def generate_launch_description():
             package='rplidar_ros',
             executable='rplidar_node',
             name='rplidar_node',
+            namespace='',
             parameters=[{'channel_type': 'serial',
                          'serial_port': '/dev/ttyUSB0',
                          'serial_baudrate': 460800,
@@ -30,22 +31,22 @@ def generate_launch_description():
                          'inverted': False,
                          'angle_compensate': True,
                          'scan_mode': 'Standard'}],
-            output='screen'
+            output='both'
         ),
         ComposableNodeContainer(
-            name='apriltag_container',
-            namespace='',
             package='rclcpp_components',
             executable='component_container',
+            name='apriltag_container',
+            namespace='',
             composable_node_descriptions=[
                 ComposableNode(
                     package='apriltag_ros',
                     plugin='AprilTagNode',
                     name='apriltag',
+                    namespace='',
                     remappings=[
-                        ('/apriltag/image_rect', '/rq_camera_node0/image_raw'),
-                        ('/apriltag/camera_info',
-                         '/rq_camera_node0/camera_info')
+                        ('/image_rect', '/rq_camera_node0/image_raw'),
+                        ('/camera_info', '/rq_camera_node0/camera_info')
                     ],
                     parameters=[
                         april_params
