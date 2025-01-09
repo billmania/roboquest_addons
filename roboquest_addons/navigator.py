@@ -42,6 +42,7 @@ class Navigation(Node):
             'x_center': int(CAMERA_WIDTH / 2),
             'y_center': int(CAMERA_HEIGHT / 2)
         }
+        self._control_finished = False
 
         self._detection_sub = self.create_subscription(
             AprilTagDetectionArray,
@@ -79,9 +80,22 @@ class Navigation(Node):
         self._control_future = self._control_client.call_async(
             self._control_request
         )
-        self._log.info(
-            'Requested motors ON'
-        )
+        if self._control_future.done():
+            try:
+                self._log.info(
+                    f'control_hat result: {self._control_future.result()}'
+                )
+                self._control_finished = self._control_future.result()
+
+            except Exception as e:
+                self._log.warn(
+                    f'control_hat excepted: {e}'
+                )
+        else:
+            self._log.warn(
+                'control_hat still running'
+            )
+            self._control_future.add_done_callback(self._control_done)
 
         self._cmd_vel_timer = self.create_timer(
             0.5,
@@ -94,10 +108,15 @@ class Navigation(Node):
             'Navigator started'
         )
 
+    def _control_done(self, future):
+        """Do the needful with the control future."""
+        self._log.info(f'control_done {future}')
+        self._control_finished = future.result().success
+
     def _move(self):
         """Move the robot."""
-        if not self._control_future.done():
-            self._log.info(
+        if not self._control_finished:
+            self._log.warn(
                 'motors not yet ON'
             )
             return
