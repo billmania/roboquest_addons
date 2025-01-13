@@ -17,6 +17,9 @@ CLOSE_ENOUGH = 10
 CAMERA_WIDTH = 640
 CAMERA_HEIGHT = 480
 
+TURN_SPEED = 40.0
+MOVE_SPEED = 40.0
+
 
 class Navigation(Node):
     """Guide the robot toward a goal.
@@ -136,10 +139,10 @@ class Navigation(Node):
                 self._twist.twist.angular.z = 0.0
             elif x_diff < 0:
                 turn_toward = 'TURN_LEFT'
-                self._twist.twist.angular.z = 0.2
+                self._twist.twist.angular.z = -TURN_SPEED
             else:
                 turn_toward = 'TURN_RIGHT'
-                self._twist.twist.angular.z = -0.2
+                self._twist.twist.angular.z = TURN_SPEED
 
             self._log.info(
                 f'{turn_toward}'
