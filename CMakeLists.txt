@@ -27,6 +27,8 @@ install(DIRECTORY config
 
 ament_python_install_package(${PROJECT_NAME})
 install(PROGRAMS
+        scripts/navigator.py
+        scripts/static_robot_tf2_broadcaster.py
         DESTINATION lib/${PROJECT_NAME}
 )
 

@@ -11,14 +11,14 @@ from rclpy.node import Node
 
 from rq_msgs.srv import Control
 
+from sensor_msgs.msg import CameraInfo
+
 from tf2_msgs.msg import TFMessage
 
 CLOSE_ENOUGH = 10
-CAMERA_WIDTH = 640
-CAMERA_HEIGHT = 480
 
-TURN_SPEED = 40.0
-MOVE_SPEED = 40.0
+TURN_SPEED = 1.0  # radians per second
+MOVE_SPEED = 0.1  # meters per second
 
 
 class Navigation(Node):
@@ -42,8 +42,8 @@ class Navigation(Node):
         self._control_request = Control.Request()
 
         self._camera = {
-            'x_center': int(CAMERA_WIDTH / 2),
-            'y_center': int(CAMERA_HEIGHT / 2)
+            'x_center': None,
+            'y_center': None
         }
         self._control_finished = False
 
@@ -51,6 +51,12 @@ class Navigation(Node):
             AprilTagDetectionArray,
             'detections',
             self._detections_cb,
+            1
+        )
+        self._camera_info_sub = self.create_subscription(
+            CameraInfo,
+            'rq_camera_node0/camera_info',
+            self._camera_info_cb,
             1
         )
         self._tf_sub = self.create_subscription(
@@ -130,6 +136,23 @@ class Navigation(Node):
             f' {self._twist.twist.angular.z}'
         )
 
+    def _camera_info_cb(self, msg):
+        """Handle a single CameraInfo message."""
+        self._log.info(
+            '_camera_info_cb'
+            f' width: {msg.width}'
+            f', height: {msg.height}',
+            throttle_duration_sec=60
+        )
+        self._camera = {
+            'x_center': int(msg.width / 2),
+            'y_center': int(msg.height / 2)
+        }
+        self.destroy_subscription(self._camera_info_sub)
+        self._log.info(
+            '_camera_info_sub destroyed'
+        )
+
     def _detections_cb(self, msg):
         """Handle a received Detections message."""
         if msg.detections:
@@ -139,10 +162,10 @@ class Navigation(Node):
                 self._twist.twist.angular.z = 0.0
             elif x_diff < 0:
                 turn_toward = 'TURN_LEFT'
-                self._twist.twist.angular.z = -TURN_SPEED
+                self._twist.twist.angular.z = TURN_SPEED
             else:
                 turn_toward = 'TURN_RIGHT'
-                self._twist.twist.angular.z = TURN_SPEED
+                self._twist.twist.angular.z = -TURN_SPEED
 
             self._log.info(
                 f'{turn_toward}'

@@ -21,4 +21,10 @@ setup(
     maintainer_email='bill@manialabs.us',
     description='RoboQuest components outside the base functionality',
     license='Proprietary',
+    entry_points={
+        'console_scripts': [
+            'navigator = roboquest_addons.navigator:main',
+            'static_robot_tf2_broadcaster = roboquest_addons.static_robot_tf2_broadcaster:main'
+        ]
+    },
 )
