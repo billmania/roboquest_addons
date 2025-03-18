@@ -5,7 +5,7 @@
 #
 
 IMAGE=$1
-NAME=rq_addons
+NAME=$1
 
 printf "Starting %s on %s\n" "$IMAGE" "$(docker context show)"
 
