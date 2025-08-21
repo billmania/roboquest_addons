@@ -4,6 +4,7 @@
         family: 36h11           # tag family name
         size: 0.173             # tag edge size in meter
         max_hamming: 0          # maximum allowed hamming distance
+        pose_estimation_method: pnp  # options are ('pnp', 'homography')
         detector:
             threads: 1          # number of threads
             decimate: 2.0       # decimate resolution for quad detection
