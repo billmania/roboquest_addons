@@ -131,18 +131,17 @@ class Navigation(Node):
             return
 
         self._cmd_vel_pub.publish(self._twist)
-        self._log.info(
-            '_move():'
-            f' {self._twist.twist.angular.z}'
-        )
 
     def _camera_info_cb(self, msg):
-        """Handle a single CameraInfo message."""
+        """Extract from a CameraInfo message.
+
+        Only one message is needed. From it, the camera frame's width
+        and height are extracted.
+        """
         self._log.info(
             '_camera_info_cb'
             f' width: {msg.width}'
-            f', height: {msg.height}',
-            throttle_duration_sec=60
+            f', height: {msg.height}'
         )
         self._camera = {
             'x_center': int(msg.width / 2),
@@ -168,7 +167,8 @@ class Navigation(Node):
                 self._twist.twist.angular.z = -TURN_SPEED
 
             self._log.info(
-                f'{turn_toward}'
+                f'{turn_toward}',
+                throttle_duration_sec=1.0
             )
         else:
             turn_toward = 'LOST'
@@ -177,9 +177,13 @@ class Navigation(Node):
     def _tf_cb(self, msg):
         """Handle a received TF message."""
         if msg.transforms:
-            self._log.info(
-                'Received tf'
-            )
+            for transform in msg.transforms:
+                self._log.info(
+                    f'Received tf at {transform.header.stamp.sec}'
+                    f' from: {transform.child_frame_id}'
+                    f' to: {transform.header.frame_id}',
+                    throttle_duration_sec=1.0
+                )
 
 
 def main(args=None):
