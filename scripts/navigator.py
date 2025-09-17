@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 """Follow a path using APRIL tags as the waypoints."""
-from apriltag_msgs.msg import AprilTagDetectionArray
+# from apriltag_msgs.msg import AprilTagDetectionArray
 
 from geometry_msgs.msg import TwistStamped
 
@@ -19,6 +19,9 @@ CLOSE_ENOUGH = 10
 
 TURN_SPEED = 1.0  # radians per second
 MOVE_SPEED = 0.1  # meters per second
+MOVE_PERIOD = 0.1  # move update period in seconds
+MIN_X = 0.05  # threshold for turning in meters
+MIN_Z = 0.5   # no closer than these meters
 
 
 class Navigation(Node):
@@ -47,12 +50,12 @@ class Navigation(Node):
         }
         self._control_finished = False
 
-        self._detection_sub = self.create_subscription(
-            AprilTagDetectionArray,
-            'detections',
-            self._detections_cb,
-            1
-        )
+        # self._detection_sub = self.create_subscription(
+        #     AprilTagDetectionArray,
+        #     'detections',
+        #     self._detections_cb,
+        #     1
+        # )
         self._camera_info_sub = self.create_subscription(
             CameraInfo,
             'rq_camera_node0/camera_info',
@@ -107,7 +110,7 @@ class Navigation(Node):
             self._control_future.add_done_callback(self._control_done)
 
         self._cmd_vel_timer = self.create_timer(
-            0.5,
+            MOVE_PERIOD,
             self._move
         )
         self._log.info(
@@ -152,38 +155,56 @@ class Navigation(Node):
             '_camera_info_sub destroyed'
         )
 
-    def _detections_cb(self, msg):
-        """Handle a received Detections message."""
-        if msg.detections:
-            x_diff = msg.detections[0].centre.x - self._camera['x_center']
-            if abs(x_diff) <= CLOSE_ENOUGH:
-                turn_toward = 'AHEAD'
-                self._twist.twist.angular.z = 0.0
-            elif x_diff < 0:
-                turn_toward = 'TURN_LEFT'
-                self._twist.twist.angular.z = TURN_SPEED
-            else:
-                turn_toward = 'TURN_RIGHT'
-                self._twist.twist.angular.z = -TURN_SPEED
+    # def _detections_cb(self, msg):
+    #     """Handle a received Detections message."""
+    #     if msg.detections:
+    #         x_diff = msg.detections[0].centre.x - self._camera['x_center']
+    #         if abs(x_diff) <= CLOSE_ENOUGH:
+    #             turn_toward = 'AHEAD'
+    #             self._twist.twist.angular.z = 0.0
+    #         elif x_diff < 0:
+    #             turn_toward = 'TURN_LEFT'
+    #             self._twist.twist.angular.z = TURN_SPEED
+    #         else:
+    #             turn_toward = 'TURN_RIGHT'
+    #             self._twist.twist.angular.z = -TURN_SPEED
 
-            self._log.info(
-                f'{turn_toward}',
-                throttle_duration_sec=1.0
-            )
-        else:
-            turn_toward = 'LOST'
-            self._twist.twist.angular.z = 0.0
+    #         self._log.info(
+    #             f'{turn_toward}',
+    #             throttle_duration_sec=1.0
+    #         )
+    #     else:
+    #         turn_toward = 'LOST'
+    #         self._twist.twist.angular.z = 0.0
 
     def _tf_cb(self, msg):
         """Handle a received TF message."""
         if msg.transforms:
-            for transform in msg.transforms:
-                self._log.info(
-                    f'Received tf at {transform.header.stamp.sec}'
-                    f' from: {transform.child_frame_id}'
-                    f' to: {transform.header.frame_id}',
-                    throttle_duration_sec=1.0
-                )
+            transform = msg.transforms[0]
+            self._log.info(
+                f'Received tf at {transform.header.stamp.sec}'
+                f' {transform.child_frame_id}'
+                f' -> {transform.header.frame_id}'
+                f' x:{transform.transform.translation.x:0.3f}'
+                f', y:{transform.transform.translation.y:0.3f}'
+                f', z:{transform.transform.translation.z:0.3f}',
+                throttle_duration_sec=0.1
+            )
+
+            if abs(transform.transform.translation.x) > MIN_X:
+                if transform.transform.translation.x < 0.0:
+                    # TURN_LEFT
+                    self._twist.twist.angular.z = TURN_SPEED
+                else:
+                    # TURN_RIGHT
+                    self._twist.twist.angular.z = -TURN_SPEED
+            else:
+                self._twist.twist.angular.z = 0.0
+
+            if transform.transform.translation.z > MIN_Z:
+                self._twist.twist.linear.x = MOVE_SPEED
+            else:
+                self._twist.twist.linear.x = 0.0
 
 
 def main(args=None):
