@@ -17,7 +17,7 @@ from tf2_msgs.msg import TFMessage
 
 CLOSE_ENOUGH = 10
 
-TURN_SPEED = 1.0  # radians per second
+TURN_SPEED = 0.5  # radians per second
 MOVE_SPEED = 0.1  # meters per second
 MOVE_PERIOD = 0.1  # move update period in seconds
 MIN_X = 0.05  # threshold for turning in meters
