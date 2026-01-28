@@ -1,0 +1,90 @@
+<!--
+   ros2 launch \
+       urdf_tutorial \
+       display.launch.py \
+       model:=/home/bill/projects/roboquest/ros2ws/src/roboquest_addons/urdf/rq_tracked.urdf
+ -->
+
+<robot name="rq_tracked" xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <link name="base_link">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <box size="0.6 0.4 0.2"/>
+      </geometry>
+      <material name="base_link_material">
+        <color rgba="0.6 0.8 0.9 1.0"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <box size="0.6 0.4 0.2"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <link name="camera">
+    <visual>
+      <geometry>
+        <box size="0.05 0.05 0.1"/>
+      </geometry>
+      <material name="gray">
+        <color rgba="0.5 0.5 0.5 1"/>
+      </material>
+    </visual>
+    <collision>
+      <geometry>
+        <box size="0.05 0.05 0.1"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="0.1"/>
+      <inertia ixx="0.001" ixy="0.0" ixz="0.0" iyy="0.001" iyz="0.0" izz="0.001"/>
+    </inertial>
+  </link>
+
+  <joint name="camera_base_joint" type="fixed">
+    <origin xyz="0.25 0 0.15" rpy="0 0 0"/>
+    <parent link="base_link"/>
+    <child link="camera"/>
+    <limit effort="1" velocity="20" />
+    <joint_properties friction="0.0"/>
+  </joint>
+
+  <!--
+  <link name="camera_link">
+    <visual>
+      <geometry>
+        <box size="0.02 0.08 0.02"/>
+      </geometry>
+      <material name="black">
+        <color rgba="0 0 0 1"/>
+      </material>
+    </visual>
+    <collision>
+      <geometry>
+        <box size="0.02 0.08 0.02"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="0.05"/>
+      <inertia ixx="0.0001" ixy="0.0" ixz="0.0" iyy="0.0001" iyz="0.0" izz="0.0001"/>
+    </inertial>
+  </link>
+
+  <link name="camera_optical_frame"/>
+
+  <joint name="camera_joint" type="fixed">
+    <parent link="camera_mount"/>
+    <child link="camera_link"/>
+    <origin xyz="0.025 0 0.05" rpy="0 0 0"/>
+  </joint>
+
+  <joint name="camera_optical_joint" type="fixed">
+    <parent link="camera_link"/>
+    <child link="camera_optical_frame"/>
+    <origin xyz="0 0 0" rpy="-1.5708 0 -1.5708"/>
+  </joint>
+  -->
+</robot>
