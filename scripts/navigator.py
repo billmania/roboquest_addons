@@ -2,9 +2,9 @@
 
 """Follow a path using APRIL tags as the waypoints."""
 
-from math import pi
+from math import degrees, isinf, pi
 from time import time
-from typing import List, Union
+from typing import List, Tuple, Union
 
 from geometry_msgs.msg import TransformStamped
 from geometry_msgs.msg import TwistStamped
@@ -15,9 +15,9 @@ from rclpy.node import Node
 
 from rq_msgs.srv import Control
 
-from tf2_msgs.msg import TFMessage
+from sensor_msgs.msg import LaserScan
 
-CLOSE_ENOUGH = 10
+from tf2_msgs.msg import TFMessage
 
 TURN_SPEED = 0.5  # radians per second
 MOVE_SPEED = 0.1  # meters per second
@@ -25,8 +25,16 @@ MOVE_PERIOD = 0.1  # move update period in seconds
 MAX_RUNTIME = 300.0  # in seconds
 MAX_ROTATE_TIME = int((2 * pi) / TURN_SPEED) + 1
 MIN_X = 0.05  # threshold for turning in meters
-MIN_Z = 0.5   # no closer than these meters
-WAYPOINT_FILE = '/opt/persist/tags/waypoints.txt'
+MIN_Z = 0.3   # no closer than these meters
+AHEAD_ANGLE_DEG = 10  # looking ahead
+SIDE_ANGLE_DEG = 20  # looking to the side
+MIN_POINTS = 10  # minimum required points to declare an obstacle
+PERSIST_DIR = (
+    '/usr/src/ros2ws/install'
+    '/roboquest_addons/share/roboquest_addons'
+    '/persist'
+)
+WAYPOINT_FILE = PERSIST_DIR + '/tags/waypoints.txt'
 
 
 class Navigation(Node):
@@ -36,7 +44,7 @@ class Navigation(Node):
     an APRIL tag.
     """
 
-    def __init__(self):
+    def __init__(self, min_z: float):
         """Create the subscriptions and publishers.
 
         Subscribe to TF transform messages. Setup a move timer to periodically
@@ -47,7 +55,7 @@ class Navigation(Node):
 
         If the current tag is detected, by appearing in a TF message, set the
         TwistStamped attributes to move toward it. Upon moving to within
-        CLOSE_ENOUGH of the current tag, proceed to the next tag.
+        min_z of the current tag, proceed to the next tag.
 
         If the current tag isn't detected, execute the find_tag() method. If
         it's not found, proceed to the next tag.
@@ -57,9 +65,16 @@ class Navigation(Node):
         self._log = self.get_logger()
         self._twist = TwistStamped()
         self._control_request = Control.Request()
+        self._min_z = min_z
         self._control_future = None
         self._control_finished = False
         self._rotation_start = None
+        self._obstacles = {
+            'ahead': True,
+            'left': True,
+            'right': True
+        }
+        self._fov_half_ahead = None
 
         self._setup_timers()
         self._tags = self._get_tags()
@@ -134,6 +149,12 @@ class Navigation(Node):
             TFMessage,
             'tf',
             self._tf_cb,
+            1
+        )
+        self._scan_sub = self.create_subscription(
+            LaserScan,
+            'scan',
+            self._scan_cb,
             1
         )
         self._cmd_vel_pub = self.create_publisher(
@@ -243,6 +264,132 @@ class Navigation(Node):
 
         return None
 
+    def _count_minimums(
+         self,
+         range_series: List[float]) -> int:
+        """Count the ranges <= self._min_z.
+
+        Count the elements in range series which are
+        less than or equal to self._min_z meters away.
+        Return the count as an int.
+        """
+        min_ranges = [
+            point for point in range_series
+            if not isinf(point) and point <= self._min_z
+        ]
+
+        return len(min_ranges)
+
+    def _get_fov_points(
+        self,
+        degrees_per_point: float,
+        ahead_angle_deg: int,
+        side_angle_deg: int
+       ) -> Tuple[int, int]:
+        """Calculate the four FOV edges.
+
+        Using ahead_angle_deg and side_angle_deg calculate
+        the length of half of the ahead FOV and the length
+        of a full side FOV.
+        """
+        half_ahead_points = round((ahead_angle_deg // 2) / degrees_per_point)
+        side_points = round(side_angle_deg / degrees_per_point)
+        return (
+            half_ahead_points,
+            side_points
+        )
+
+    def _scan_cb(self, msg):
+        """Handle a received LiDAR message.
+
+        Determine if there is an obstacle within self._min_z meters in
+        front or to the side of the robot.
+
+        The RPLiDAR has a triangle on the top, which point forward
+        (aligned with the robot's positive X axis. The LiDAR range
+        point aligned with that triangle is "0". The points then
+        progress as a positive rotation around the robot's Z axis.
+
+        As a result, the LiDAR's four most forward-pointing range
+        points are 1, 0, 719, and 718.
+        """
+        if not self._fov_half_ahead:
+            self._how_many_points = len(msg.ranges)
+            self._range_limits = {
+                'min': msg.range_min,
+                'max': msg.range_max
+            }
+            #
+            # In case the minimum distance was set to less than the
+            # capability of the LiDAR.
+            #
+            self._min_z = max(self._min_z, self._range_limits['min'])
+            self._log.debug(
+                f' FOV points: {self._how_many_points}'
+                f", Range min: {self._range_limits['min']}"
+                f", Range max: {self._range_limits['max']}"
+                f', MIN_Z: {self._min_z}'
+            )
+            self._fov_half_ahead, self._fov_side = self._get_fov_points(
+                degrees(msg.angle_increment),
+                AHEAD_ANGLE_DEG,
+                SIDE_ANGLE_DEG
+            )
+            self._log.debug(
+                'FOV slices'
+                f' Ahead :{self._fov_half_ahead} + -{self._fov_half_ahead}:'
+                f', Left {self._fov_half_ahead}'
+                f':{self._fov_half_ahead+self._fov_side}'
+                f', Right {-(self._fov_half_ahead+self._fov_side)}:'
+                f'{-self._fov_half_ahead}'
+            )
+
+        self._obstacles['ahead'] = False
+        self._obstacles['left'] = False
+        self._obstacles['right'] = False
+        ahead = self._count_minimums(
+            msg.ranges[
+                :self._fov_half_ahead
+            ] +
+            msg.ranges[
+                -self._fov_half_ahead:
+            ]
+        )
+        if ahead >= MIN_POINTS:
+            self._obstacles['ahead'] = True
+            self._log.debug(
+                'Obstacle Ahead:'
+                f' Points: {ahead}',
+                throttle_duration_sec=1.0
+            )
+
+        left = self._count_minimums(
+            msg.ranges[
+                self._fov_half_ahead:self._fov_half_ahead+self._fov_side
+            ]
+        )
+        if left >= MIN_POINTS:
+            self._obstacles['left'] = True
+            self._log.debug(
+                'Obstacle Left:'
+                f' Points: {left}',
+                throttle_duration_sec=1.0
+            )
+
+        right = self._count_minimums(
+            msg.ranges[
+                -(self._fov_half_ahead+self._fov_side):
+                -self._fov_half_ahead
+            ]
+        )
+        if right >= MIN_POINTS:
+            self._obstacles['right'] = True
+            self._log.debug(
+                'Obstacle Right:'
+                f' Points: {right}',
+                throttle_duration_sec=1.0
+            )
+
     def _tf_cb(self, msg):
         """Handle a received TF message.
 
@@ -297,7 +444,7 @@ class Navigation(Node):
         else:
             self._twist.twist.angular.z = 0.0
 
-        if detected_tag.transform.translation.z > MIN_Z:
+        if detected_tag.transform.translation.z > self._min_z:
             self._twist.twist.linear.x = MOVE_SPEED
         else:
             self._twist.twist.linear.x = 0.0
@@ -359,7 +506,7 @@ def main(args=None):
         rclpy.logging.LoggingSeverity.DEBUG
     )
 
-    navigation = Navigation()
+    navigation = Navigation(MIN_Z)
     while rclpy.ok():
         try:
             rclpy.spin(
