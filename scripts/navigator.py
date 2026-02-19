@@ -55,7 +55,6 @@ class State(Enum):
     """Specify the robot state."""
 
     START = 0
-    ESTOP = 1  # stop moving, never move again
     AVOIDING = 2  # adjusting motion to avoid obstacle(s)
     PURSUING = 3  # moving toward the detected tag
     SEARCHING = 4  # searching for the tag
@@ -107,7 +106,7 @@ class Navigation(Node):
         self._setup_topics()
         self.context.on_shutdown(self.cleanup_cb)
         self._setup_motor_control()
-        self.set_motors('ON')
+        self._set_motors('ON')
 
         self._log.info(
             f'\nMAX_SEARCH_TIME = {MAX_SEARCH_TIME}'
@@ -126,6 +125,15 @@ class Navigation(Node):
     def _camera_frames(self) -> bool:
         """Check if camera frames are published."""
         return True
+
+    def _set_rates(self, linear: float = 0.0, angular: float = 0.0) -> None:
+        """Set the linear and angular rates."""
+        self._twist.twist.linear.x = linear
+        self._twist.twist.angular.z = angular
+        self._log.debug(
+            f'linear: {linear:0.3f}, angular: {angular:0.3f}',
+            throttle_duration_sec=1.0
+        )
 
     def _get_next_tag(self) -> None:
         """Get the next tag in the list.
@@ -243,7 +251,7 @@ class Navigation(Node):
             'Connected to control_hat service'
         )
 
-    def set_motors(self, motor_state: str = 'OFF') -> None:
+    def _set_motors(self, motor_state: str = 'OFF') -> None:
         """Set the state of the motors."""
         if self._control_future:
             #
@@ -368,10 +376,8 @@ class Navigation(Node):
             return
 
         # TODO: Handle un-updated range and bearing better
-        self._twist.twist.linear.x = (
-            min(1.0, tag_range / MAX_TAG_DISTANCE_M) * MOVE_SPEED
-        )
-        self._twist.twist.angular.z = (
+        self._set_rates(
+            min(1.0, tag_range / MAX_TAG_DISTANCE_M) * MOVE_SPEED,
             min(1.0, self._tag['bearing'] / MAX_TAG_BEARING_RAD) * TURN_SPEED
         )
 
@@ -402,12 +408,13 @@ class Navigation(Node):
             #
             # Rotated enough, now move forward.
             #
-            self._twist.twist.linear.x = MOVE_SPEED
-            self._twist.twist.angular.z = 0.0
+            self._set_rates(
+                MOVE_SPEED,
+                0.0
+            )
             self._avoidance_cycles -= 1
             return
 
-        self._twist.twist.linear.x = 0.0
         if (
             not self._obstacles['left']
             or (self._obstacles['right']
@@ -417,13 +424,13 @@ class Navigation(Node):
             # The right obstacle is closer than the left, so
             # rotate to the left.
             #
-            self._twist.twist.angular.z = TURN_SPEED
+            self._set_rates(angular=TURN_SPEED)
         else:
-            self._twist.twist.angular.z = -TURN_SPEED
+            self._set_rates(angular=-TURN_SPEED)
 
     def _done(self):
         """Be done."""
-        pass
+        self._set_motors('OFF')
 
     def _set_state(self, new_state: State = None) -> None:
         """Set a new state."""
@@ -453,10 +460,7 @@ class Navigation(Node):
             )
             return
 
-        if self._state == State.ESTOP:
-            pass
-
-        elif self._state == State.SEARCHING:
+        if self._state == State.SEARCHING:
             self._searching()
 
         elif self._state == State.PURSUING:
@@ -488,15 +492,13 @@ class Navigation(Node):
         Rotate the robot, with no linear motion, to look for a
         tag.
         """
-        self._twist.twist.angular.z = TURN_SPEED
-        self._twist.twist.linear.x = 0.0
+        self._set_rates(angular=TURN_SPEED)
         if not self._searching_start:
             self._searching_start = time()
 
     def _stop_rotating(self):
         """Stop rotating the robot."""
-        self._twist.twist.angular.z = 0.0
-        self._twist.twist.linear.x = 0.0
+        self._set_rates()
         self._searching_start = None
 
     def _get_detected_tag(
@@ -701,14 +703,13 @@ class Navigation(Node):
         )
         for timer in self._timers:
             timer.cancel()
-        self.set_motors('OFF')
+        self._set_motors('OFF')
         self._control_client.destroy()
 
         #
         # In case the motor power isn't removed.
         #
-        self._twist.twist.angular.z = 0.0
-        self._twist.twist.linear.x = 0.0
+        self._set_rates()
         self._move()
         self._move()
 
