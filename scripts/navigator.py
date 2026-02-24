@@ -15,6 +15,8 @@ from typing import List, Tuple, Union
 from geometry_msgs.msg import TransformStamped
 from geometry_msgs.msg import TwistStamped
 
+from rcl_interfaces.msg import SetParametersResult
+
 import rclpy
 import rclpy.logging
 from rclpy.node import Node
@@ -25,24 +27,6 @@ from sensor_msgs.msg import LaserScan
 
 from tf2_msgs.msg import TFMessage
 
-TURN_SPEED = 0.5  # radians per second
-MOVE_SPEED = 0.1  # meters per second
-MOVE_PERIOD = 0.1  # move update period in seconds
-MAX_SEARCH_TIME = round((2 * pi) / TURN_SPEED)
-MAX_OBSTACLE_RANGE = 15.0
-MAX_TAG_DISTANCE_M = 5.0  # max detect distance for tags
-MAX_TAG_BEARING_RAD = (pi / 4)  # max detect bearing for tags
-MAX_TAG_LOST_S = 0.5
-OBSTACLE_CLOSE_ENOUGH = 0.3  # minimum proximity to obstacles
-IGNORE_RANGES = 1  # after sorting, ignore these lowest ranges
-MEAN_RANGES = 3  # after ignoring, average these lowest ranges
-TAG_TRANS_TRIM = 0.0  # added to translation.z
-TAG_TRANS_FACTOR = 1.0  # multiplied by translation.z
-TAG_CLOSE_ENOUGH = OBSTACLE_CLOSE_ENOUGH * 2.0
-AVOIDANCE_DIST_M = (2 * OBSTACLE_CLOSE_ENOUGH)
-AVOIDANCE_CYCLES = 10
-AHEAD_ANGLE_DEG = 10  # looking ahead
-SIDE_ANGLE_DEG = 20  # looking to the side
 PERSIST_DIR = (
     '/usr/src/ros2ws/install'
     '/roboquest_addons/share/roboquest_addons'
@@ -86,19 +70,19 @@ class Navigation(Node):
         super().__init__('navigation')
 
         self._log = self.get_logger()
+        self._setup_parameters()
         self._state = State.START
         self._twist = TwistStamped()
         self._control_request = Control.Request()
         self._control_future = None
         self._control_finished = False
         self._searching_start = None
-        self._obstacle_range_max = MAX_OBSTACLE_RANGE
         self._obstacles = {
             'ahead': None,
             'left': None,
             'right': None
         }
-        self._avoidance_cycles = AVOIDANCE_CYCLES
+        self._avoidance_cycles = self._parameters['avoidance_cycles']
         self._fov_half_ahead = None
 
         self._tags = self._get_tags()
@@ -108,11 +92,6 @@ class Navigation(Node):
         self._setup_motor_control()
         self._set_motors('ON')
 
-        self._log.info(
-            f'\nMAX_SEARCH_TIME = {MAX_SEARCH_TIME}'
-            f'\nTAG_TRANS_TRIM = {TAG_TRANS_TRIM}'
-            f'\nTAG_TRANS_FACTOR = {TAG_TRANS_FACTOR}'
-        )
         if self._camera_frames():
             self._set_state(State.SEARCHING)
         else:
@@ -121,6 +100,56 @@ class Navigation(Node):
         self._log.info(
             'Navigator started'
         )
+
+    def _params_cb(self, updated_parameters) -> SetParametersResult:
+        """Update dynamic parameters."""
+        for parameter in updated_parameters:
+            self._parameters[parameter.name] = parameter.value
+            self._log.debug(
+                f'Parameter {parameter.name} now {parameter.value}'
+            )
+
+        return SetParametersResult(successful=True)
+
+    def _setup_parameters(self) -> None:
+        """Get the parameters.
+
+        Retrieve the ROS parameters and return the collection
+        as a dictionary.
+        """
+        parameter_declarations = [
+            ('turn_speed', 0.5),
+            ('move_speed', 0.1),
+            ('move_period', 0.1),
+            ('max_search_time', 12.0),
+            ('max_tag_distance_m', 5.0),
+            ('max_tag_bearing_rad', (pi / 4)),
+            ('max_tag_lost_s', 0.5),
+            ('obstacle_close_enough', 0.3),
+            ('ignore_ranges', 1),
+            ('mean_ranges', 3),
+            ('tag_trans_trim', 0.0),
+            ('tag_trans_factor', 1.0),
+            ('tag_close_enough', 0.6),
+            ('avoidance_dist_m', 0.6),
+            ('avoidance_cycles', 10),
+            ('ahead_angle_deg', 10),
+            ('side_angle_deg', 20)
+        ]
+        self.declare_parameters(
+            namespace='',
+            parameters=parameter_declarations
+        )
+        parameter_names = []
+        for parameter in parameter_declarations:
+            parameter_names.append(parameter[0])
+        parameters = self.get_parameters(parameter_names)
+        self._parameters = {}
+        for index, name in enumerate(parameter_names):
+            self._parameters[name] = parameters[index].value
+            self.get_logger().info(f'Parameter {name}:'
+                                   f' {self._parameters[name]}')
+        self.add_on_set_parameters_callback(self._params_cb)
 
     def _camera_frames(self) -> bool:
         """Check if camera frames are published."""
@@ -204,7 +233,7 @@ class Navigation(Node):
         self._timers = []
 
         move_timer = self.create_timer(
-            timer_period_sec=MOVE_PERIOD,
+            timer_period_sec=self._parameters['move_period'],
             callback=self._move
         )
         self._timers.append(move_timer)
@@ -296,7 +325,10 @@ class Navigation(Node):
     def _searching(self):
         """Search for the current tag."""
         if self._searching_start:
-            if (time() - self._searching_start) >= MAX_SEARCH_TIME:
+            if (
+                (time() - self._searching_start)
+                >= self._parameters['max_search_time']
+            ):
                 self._stop_rotating()
                 self._log.warning(
                     'Tag not found'
@@ -319,14 +351,14 @@ class Navigation(Node):
     def _pursuing(self):
         """Move toward the tag.
 
-        Move to within TAG_CLOSE_ENOUGH of the tag. The tag
+        Move to within self._parameters['tag_close_enough'] of the tag. The tag
         will also be identified as an obstacle, so check the distance
         to the tag before checking the distance to _obstacles.
         """
         tag_range = self._tag['range']
         obstacle_range = min([
             v for v in self._obstacles.values() if type(v) is float
-            ] + [self._obstacle_range_max]
+            ] + [self._parameters['max_obstacle_range']]
         )
         self._log.debug(
             '_pursuing:'
@@ -340,7 +372,7 @@ class Navigation(Node):
             )
             return
 
-        if tag_range <= TAG_CLOSE_ENOUGH:
+        if tag_range <= self._parameters['tag_close_enough']:
             self._log.debug(
                 'Close enough to tag'
             )
@@ -353,7 +385,7 @@ class Navigation(Node):
             return
 
         try:
-            if obstacle_range <= OBSTACLE_CLOSE_ENOUGH:
+            if obstacle_range <= self._parameters['obstacle_close_enough']:
                 self._log.debug(
                     'Closed enough to obstacle'
                 )
@@ -365,7 +397,10 @@ class Navigation(Node):
                 f'_pursuing: exception {e}'
             )
 
-        if (time() - self._tag['timestamp']) >= MAX_TAG_LOST_S:
+        if (
+            (time() - self._tag['timestamp'])
+            >= self._parameters['max_tag_lost_s']
+        ):
             self._log.warning(
                 f"Tag {self._tag['name']} lost"
             )
@@ -377,8 +412,23 @@ class Navigation(Node):
 
         # TODO: Handle un-updated range and bearing better
         self._set_rates(
-            min(1.0, tag_range / MAX_TAG_DISTANCE_M) * MOVE_SPEED,
-            min(1.0, self._tag['bearing'] / MAX_TAG_BEARING_RAD) * TURN_SPEED
+            min(
+                1.0,
+                (
+                    (tag_range / self._parameters['max_tag_distance_,'])
+                    * self._parameters['move_speed']
+                )
+            ),
+            min(
+                1.0,
+                (
+                    (
+                        self._tag['bearing']
+                        / self._parameters['max_tag_bearing_rad']
+                    )
+                    * self._parameters['turn_speed']
+                )
+            )
         )
 
     def _avoiding(self):
@@ -386,30 +436,37 @@ class Navigation(Node):
 
         Rotate away from the closest obstacle until all
         three obstacle ranges are greater than
-        OBSTACLE_CLOSE_ENOUGH, then move forward for
+        self._parameters['obstacle_close_enough'], then move forward for
         AVOID_DISTANCE_M.
         """
         if not self._avoidance_cycles:
             #
             # Traveled adequate linear distance.
             #
-            self._avoidance_cycles = AVOIDANCE_CYCLES
+            self._avoidance_cycles = self._parameters['avoidance_cycles']
             self._set_state(State.SEARCHING)
             return
 
         if (
             (not self._obstacles['left']
-             or self._obstacles['left'] > OBSTACLE_CLOSE_ENOUGH)
+             or (
+                 self._obstacles['left']
+                 > self._parameters['obstacle_close_enough']
+             ))
             and (not self._obstacles['ahead']
-                 or self._obstacles['ahead'] > OBSTACLE_CLOSE_ENOUGH)
+                 or (
+                     self._obstacles['ahead']
+                     > self._parameters['obstacle_close_enough']))
             and (not self._obstacles['right']
-                 or self._obstacles['right'] > OBSTACLE_CLOSE_ENOUGH)
+                 or (
+                     self._obstacles['right']
+                     > self._parameters['obstacle_close_enough']))
         ):
             #
             # Rotated enough, now move forward.
             #
             self._set_rates(
-                MOVE_SPEED,
+                self._parameters['move_speed'],
                 0.0
             )
             self._avoidance_cycles -= 1
@@ -424,9 +481,9 @@ class Navigation(Node):
             # The right obstacle is closer than the left, so
             # rotate to the left.
             #
-            self._set_rates(angular=TURN_SPEED)
+            self._set_rates(angular=self._parameters['turn_speed'])
         else:
-            self._set_rates(angular=-TURN_SPEED)
+            self._set_rates(angular=-self._parameters['turn_speed'])
 
     def _done(self):
         """Be done."""
@@ -492,7 +549,7 @@ class Navigation(Node):
         Rotate the robot, with no linear motion, to look for a
         tag.
         """
-        self._set_rates(angular=TURN_SPEED)
+        self._set_rates(angular=self._parameters['turn_speed'])
         if not self._searching_start:
             self._searching_start = time()
 
@@ -527,7 +584,11 @@ class Navigation(Node):
             point for point in range_series
             if not isinf(point) and not isnan(point)
         ]
-        ranges = sorted(min_ranges)[IGNORE_RANGES:][:MEAN_RANGES]
+        ranges = (
+            sorted(min_ranges)
+            [self._parameters['ignore_ranges']:]
+            [:self._parameters['mean_ranges']]
+        )
         if len(ranges) > 0:
             return sum(ranges) / len(ranges)
         else:
@@ -568,15 +629,16 @@ class Navigation(Node):
         """
         if not self._fov_half_ahead:
             try:
-                self._obstacle_range_max = msg.range_max
+                self._parameters['max_obstacle_range'] = msg.range_max
                 self._log.debug(
                     f'Range min: {msg.range_min:0.3f}'
-                    f', Range max: {self._obstacle_range_max:0.3f}'
+                    ', Range max:'
+                    f" {self._parameters['max_obstacle_range']:0.3f}"
                 )
                 self._fov_half_ahead, self._fov_side = self._get_fov_points(
                     degrees(msg.angle_increment),
-                    AHEAD_ANGLE_DEG,
-                    SIDE_ANGLE_DEG
+                    self._parameters['ahead_angle_deg'],
+                    self._parameters['side_angle_deg']
                 )
 
             except Exception as e:
@@ -645,9 +707,9 @@ class Navigation(Node):
         if detected_tag:
             try:
                 if not (
-                    OBSTACLE_CLOSE_ENOUGH
+                    self._parameters['obstacle_close_enough']
                     < detected_tag.transform.translation.z <
-                    MAX_TAG_DISTANCE_M
+                    self._parameters['max_tag_distance_,']
                 ):
                     self._log.warning(
                         '_tf_cb: translation.z out of range at'
@@ -663,10 +725,16 @@ class Navigation(Node):
 
             try:
                 self._tag['range'] = (
-                    (detected_tag.transform.translation.z + TAG_TRANS_TRIM)
-                    * TAG_TRANS_FACTOR
+                    (
+                        detected_tag.transform.translation.z
+                        + self._parameters['tag_trans_trim']
+                    )
+                    * self._parameters['tag_trans_factor']
                 )
-                if self._tag['range'] <= OBSTACLE_CLOSE_ENOUGH:
+                if (
+                    self._tag['range']
+                    <= self._parameters['obstacle_close_enough']
+                ):
                     self._log.warning(
                         '_tf_cb: translation.z = '
                         f'{detected_tag.transform.translation.z:0.3f}'
