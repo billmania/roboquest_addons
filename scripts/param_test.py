@@ -1,5 +1,11 @@
 #!/usr/bin/env python
-"""Test implementation of ROS2 dynamic parameters."""
+"""Test implementation of ROS2 dynamic parameters.
+
+Demonstrate how a node can define parameters itself at run-time,
+without requiring them to be defined at startup with a launch
+file or with "ros2 run". The parameters can then be modified at
+run-time using "ros2 param set /param_test".
+"""
 from rcl_interfaces.msg import SetParametersResult
 
 import rclpy
@@ -37,7 +43,18 @@ class MinimalParam(rclpy.node.Node):
         self.timer = self.create_timer(1, self.timer_callback)
 
     def _params_cb(self, updated_parameters) -> SetParametersResult:
-        """Update parameters."""
+        """Update parameters.
+
+        updated_parameters seems to always be a list of one parameter,
+        whether calling "ros2 param set" with a single parameter or
+        "ros2 param load" with a YAML file containing multiple
+        parameters.
+        """
+        self.get_logger().info(
+            '_params_cb:'
+            f' {len(updated_parameters)} updated parameters'
+        )
+
         for parameter in updated_parameters:
             if (
                 parameter.name == 'float_param'
