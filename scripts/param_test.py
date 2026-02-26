@@ -6,11 +6,18 @@ without requiring them to be defined at startup with a launch
 file or with "ros2 run". The parameters can then be modified at
 run-time using "ros2 param set /param_test".
 """
+from typing import List, Tuple, Union
+
 from rcl_interfaces.msg import SetParametersResult
 
 import rclpy
 import rclpy.node
-from rclpy.parameter import Parameter
+
+declarations = [
+    ('float_param', 42.0),
+    ('string_param', 'string'),
+    ('integer_param', 1)
+]
 
 
 class MinimalParam(rclpy.node.Node):
@@ -21,26 +28,30 @@ class MinimalParam(rclpy.node.Node):
         node_name = 'param_test'
         super().__init__(node_name)
 
-        self.declare_parameter('float_param', 42.0)
-        self.declare_parameter('string_param', 'string')
-        self.declare_parameter('integer_param', 12)
+        self._parameters = self._setup_parameters(declarations)
         self.add_on_set_parameters_callback(self._params_cb)
-        self.float_param = (
-            self.get_parameter('float_param')
-            .get_parameter_value()
-            .double_value
-        )
-        self.string_param = (
-            self.get_parameter('string_param')
-            .get_parameter_value()
-            .string_value
-        )
-        self.integer_param = (
-            self.get_parameter('integer_param')
-            .get_parameter_value()
-            .integer_value
-        )
         self.timer = self.create_timer(1, self.timer_callback)
+
+    def _setup_parameters(
+         self,
+         declarations: List[Tuple[str, Union[float, str, int]]]) -> dict:
+        """Set up the parameters.
+
+        Receive the parameter declarations as a list of tuples containing
+        the name of the parameter and its default value.
+        Return a dictionary with each parameter name as the key
+        and the parameter's current value.
+        """
+        parameters = {}
+
+        for declaration in declarations:
+            param_name = declaration[0]
+            param_value = declaration[1]
+            self.declare_parameter(param_name, param_value)
+
+            parameters[param_name] = self.get_parameter(param_name)
+
+        return parameters
 
     def _params_cb(self, updated_parameters) -> SetParametersResult:
         """Update parameters.
@@ -56,31 +67,16 @@ class MinimalParam(rclpy.node.Node):
         )
 
         for parameter in updated_parameters:
-            if (
-                parameter.name == 'float_param'
-                and parameter.type_ == Parameter.Type.DOUBLE
-            ):
-                self.float_param = parameter.value
-            elif (
-                parameter.name == 'string_param'
-                and parameter.type_ == Parameter.Type.STRING
-            ):
-                self.string_param = parameter.value
-            elif (
-                parameter.name == 'integer_param'
-                and parameter.type_ == Parameter.Type.INTEGER
-            ):
-                self.integer_param = parameter.value
+            self._parameters[parameter.name] = parameter
 
         return SetParametersResult(successful=True)
 
     def timer_callback(self):
         """Run the main logic."""
-        self.get_logger().info(
-            f' float_param = {self.float_param}'
-            f', string_param = {self.string_param}'
-            f', integer_param = {self.integer_param}'
-        )
+        for key in self._parameters:
+            self.get_logger().info(
+                f' {key} = {self._parameters[key].value}'
+            )
 
 
 def main():
