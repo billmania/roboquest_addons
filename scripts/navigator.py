@@ -135,20 +135,19 @@ class Navigation(Node):
         as a dictionary.
         """
         declarations = [
-            ('turn_speed', 0.5),
-            ('move_speed', 0.1),
+            ('turn_speed', 0.6),
+            ('move_speed', 0.2),
             ('move_period', 0.1),
             ('max_search_time', 12.0),
             ('max_tag_distance_m', 5.0),
             ('max_tag_bearing_rad', 0.7854),
             ('max_tag_lost_s', 0.5),
-            ('obstacle_close_enough', 0.3),
+            ('obstacle_close_enough', 0.2),
             ('ignore_ranges', 1),
             ('mean_ranges', 3),
             ('tag_trans_trim', 0.0),
             ('tag_trans_factor', 1.0),
-            ('tag_close_enough', 0.6),
-            ('avoidance_dist_m', 0.6),
+            ('tag_close_enough', 0.5),
             ('avoidance_cycles', 10),
             ('ahead_angle_deg', 10),
             ('side_angle_deg', 20)
@@ -503,8 +502,12 @@ class Navigation(Node):
             self._set_rates(angular=-self._parameters['turn_speed'].value)
 
     def _done(self):
-        """Be done."""
+        """Be done.
+
+        Stop the robot from moving.
+        """
         if not self._motors_off:
+            self._set_rates()
             self._set_motors('OFF')
             self._motors_off = True
 

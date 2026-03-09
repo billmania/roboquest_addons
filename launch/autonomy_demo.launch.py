@@ -110,10 +110,10 @@ def generate_launch_description():
             output='both'
         ),
         DeclareLaunchArgument(
-            'turn_speed', default_value='0.5',
+            'turn_speed', default_value='0.6',
             description='Turn rate in radians per second'),
         DeclareLaunchArgument(
-            'move_speed', default_value='0.1',
+            'move_speed', default_value='0.2',
             description='Linear rate in meters per second'),
         DeclareLaunchArgument(
             'move_period', default_value='0.1',
@@ -131,7 +131,7 @@ def generate_launch_description():
             'max_tag_lost_s', default_value='0.5',
             description='Max seconds a tag can be lost after detection'),
         DeclareLaunchArgument(
-            'obstacle_close_enough', default_value='0.3',
+            'obstacle_close_enough', default_value='0.2',
             description='Minimum distance in meters to approach a tag'),
         DeclareLaunchArgument(
             'ignore_ranges', default_value='1',
@@ -146,11 +146,8 @@ def generate_launch_description():
             'tag_trans_factor', default_value='1.0',
             description='Multiply tag range by this value'),
         DeclareLaunchArgument(
-            'tag_close_enough', default_value='0.6',
+            'tag_close_enough', default_value='0.5',
             description='Distance to tag in meters'),
-        DeclareLaunchArgument(
-            'avoidance_dist_m', default_value='0.6',
-            description='Back this many meters from obstacles'),
         DeclareLaunchArgument(
             'avoidance_cycles', default_value='10',
             description='Move ahead this many logic loops'),
@@ -182,7 +179,6 @@ def generate_launch_description():
                 'tag_trans_trim': LaunchConfiguration('tag_trans_trim'),
                 'tag_trans_factor': LaunchConfiguration('tag_trans_factor'),
                 'tag_close_enough': LaunchConfiguration('tag_close_enough'),
-                'avoidance_dist_m': LaunchConfiguration('avoidance_dist_m'),
                 'avoidance_cycles': LaunchConfiguration('avoidance_cycles'),
                 'ahead_angle_deg': LaunchConfiguration('ahead_angle_deg'),
                 'side_angle_deg': LaunchConfiguration('side_angle_deg'),
