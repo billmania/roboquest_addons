@@ -149,13 +149,13 @@ def generate_launch_description():
             'tag_close_enough', default_value='0.5',
             description='Distance to tag in meters'),
         DeclareLaunchArgument(
-            'avoidance_cycles', default_value='10',
+            'avoidance_cycles', default_value='15',
             description='Move ahead this many logic loops'),
         DeclareLaunchArgument(
             'ahead_angle_deg', default_value='10',
             description='Degrees of FOV considered ahead'),
         DeclareLaunchArgument(
-            'side_angle_deg', default_value='20',
+            'side_angle_deg', default_value='30',
             description='Degress beyond ahead'),
         Node(
             package=package_name,

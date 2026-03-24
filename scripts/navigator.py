@@ -8,6 +8,7 @@ path. Use the LiDAR to detect _obstacles.
 
 from enum import Enum
 from math import atan2, degrees, isinf, isnan
+from sys import exit as sys_exit
 from time import time
 from traceback import print_exc
 from typing import List, Tuple, Union
@@ -76,7 +77,6 @@ class Navigation(Node):
         self._control_request = Control.Request()
         self._control_future = None
         self._control_finished = False
-        self._motors_off = False
         self._searching_start = None
         self._max_obstacle_range = 25.0  # greatest possible LiDAR range
         self._obstacles = {
@@ -148,9 +148,9 @@ class Navigation(Node):
             ('tag_trans_trim', 0.0),
             ('tag_trans_factor', 1.0),
             ('tag_close_enough', 0.5),
-            ('avoidance_cycles', 10),
+            ('avoidance_cycles', 15),
             ('ahead_angle_deg', 10),
-            ('side_angle_deg', 20)
+            ('side_angle_deg', 30)
         ]
 
         self._parameters = {}
@@ -504,12 +504,26 @@ class Navigation(Node):
     def _done(self):
         """Be done.
 
-        Stop the robot from moving.
+        Stop the robot from moving and shutdown. publish()
+        (the suspenders) is called by this method because
+        _set_motors() (the belt) doesn't always succeed.
         """
-        if not self._motors_off:
-            self._set_rates()
-            self._set_motors('OFF')
-            self._motors_off = True
+        self._set_rates()
+        try:
+            self._cmd_vel_pub.publish(self._twist)
+
+        except Exception as e:
+            self._log.warning(
+                f'cmd_vel publish excepted {e}'
+            )
+
+        self._set_motors('OFF')
+        rclpy.spin_once(
+            node=self,
+            executor=None,
+            timeout_sec=1.0
+        )
+        rclpy.shutdown()
 
     def _set_state(self, new_state: State = None) -> None:
         """Set a new state."""
@@ -525,9 +539,7 @@ class Navigation(Node):
         """Move the robot.
 
         This method is expected to be called periodically.
-        It uses self._state, the distance to any detected
-        tag, and the distance to any obstacles, to decide
-        in which direction to move and then move.
+        It uses self._state to select a specific behavior.
         """
         if not self._control_finished:
             #
@@ -537,7 +549,6 @@ class Navigation(Node):
                 'Still waiting for motors to be enabled',
                 throttle_duration_sec=1.0
             )
-            return
 
         if self._state == State.SEARCHING:
             self._searching()
@@ -557,6 +568,11 @@ class Navigation(Node):
                 throttle_duration_sec=15.0
             )
 
+        #
+        # publish() is called here in order to be called
+        # periodically, even when _set_rates() hasn't been
+        # called during this specific period.
+        #
         try:
             self._cmd_vel_pub.publish(self._twist)
 
@@ -773,15 +789,6 @@ class Navigation(Node):
                 )
                 return
 
-    def _begin_shutdown(self) -> None:
-        """Prepare for the node to be shutdown."""
-        self._log.warn(
-            'Preparing to shutdown'
-        )
-        self.cleanup_cb()
-        self.destroy_node()
-        rclpy.shutdown()
-
     def cleanup_cb(self) -> None:
         """Cleanup quickly.
 
@@ -791,24 +798,10 @@ class Navigation(Node):
         self._log.info(
             'Executing cleanup_cb'
         )
+        self._set_rates()
         for timer in self._timers:
             timer.cancel()
         self._set_motors('OFF')
-        self._control_client.destroy()
-
-        #
-        # In case the motor power isn't removed.
-        #
-        self._set_rates()
-        self._move()
-        self._move()
-
-        while self._control_future:
-            rclpy.spin_once(
-                node=self,
-                executor=None,
-                timeout_sec=0.1
-            )
 
         self._log.info(
             'Cleanup completed'
@@ -828,11 +821,18 @@ def main(args=None):
         rclpy.spin(navigation)
 
     except KeyboardInterrupt:
-        pass
+        print(
+            'main: KeyboardInterrupt raised'
+        )
+
+    except Exception as e:
+        print(
+            f'main: {e} raised'
+        )
 
     finally:
         navigation.destroy_node()
-        rclpy.shutdown()
+        sys_exit(0)
 
 
 if __name__ == '__main__':
