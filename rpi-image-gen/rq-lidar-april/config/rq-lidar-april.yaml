@@ -1,0 +1,38 @@
+#
+# Description of the target hardware.
+#
+device:
+  layer: rpi4-rq
+  hostname: rq-lidar-april
+  user1: roboquest
+  user1pass: OneLow4$
+
+#
+# Control how the image is built.
+#
+image:
+  layer: image-rpios
+  boot_part_size: 512M
+  root_part_size: 5G
+  opt_part_size: 512M
+  name: rq-lidar-april
+
+#
+# Debian packages to be automatically installed into the root filesystem.
+#
+packages:
+  - vim
+  - git
+
+#
+# Not sure where this belongs or if it even works correctly.
+#
+locale:
+  timezone: America/Chicago
+  default: en_US.UTF-8
+
+#
+# Layers to be included.
+#
+layer:
+  base: trixie-minbase
