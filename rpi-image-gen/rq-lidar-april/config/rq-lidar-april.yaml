@@ -11,7 +11,7 @@ device:
 # Control how the image is built.
 #
 image:
-  layer: image-rpios
+  layer: rq-partitions
   boot_part_size: 512M
   root_part_size: 5G
   opt_part_size: 512M
@@ -23,9 +23,13 @@ image:
 packages:
   - vim
   - git
+  - python3-docker
+  - python3-serial
+  - minicom
+  - i2c-tools
 
 #
-# Not sure where this belongs or if it even works correctly.
+# Set the locale stuff.
 #
 locale:
   timezone: America/Chicago
