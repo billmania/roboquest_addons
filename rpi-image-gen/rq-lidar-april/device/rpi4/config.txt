@@ -40,6 +40,7 @@ lock_device_private_key=1
 
 [pi4]
 enable_uart=1
+dtoverlay=disable-bt
 dtoverlay=uart3
 dtoverlay=uart5
 

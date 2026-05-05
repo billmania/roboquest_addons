@@ -9,5 +9,5 @@
 ---
 mmdebstrap:
   customize-hooks:
-    - mkdir -p --mode=0750 $1/opt
+    - mkdir -p --mode=0750 $1/opt && chown root:root $1/opt
     - install -m 644 --owner=root --group=root ${SRCROOT}/device/rpi4/config.txt $1/boot/firmware/
