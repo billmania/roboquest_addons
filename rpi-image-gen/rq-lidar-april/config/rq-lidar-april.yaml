@@ -13,12 +13,13 @@ device:
 image:
   layer: rq-partitions
   boot_part_size: 512M
-  root_part_size: 5G
-  opt_part_size: 512M
+  root_part_size: 7G
+  opt_part_size: 9G
   name: rq-lidar-april
 
 #
 # Debian packages to be automatically installed into the root filesystem.
+# None of the image customization process depends on these packages.
 #
 packages:
   - vim
@@ -27,13 +28,18 @@ packages:
   - python3-serial
   - minicom
   - i2c-tools
+  - network-manager
+  - raspi-utils-core
+  - lsof
+  - usbutils
+  - apt-transport-https
+  - rpicam-apps
 
 #
 # Set the locale stuff.
 #
 locale:
-  timezone: America/Chicago
-  default: en_US.UTF-8
+  timezone: America/LosAngeles
 
 #
 # Layers to be included.

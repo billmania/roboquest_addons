@@ -1,0 +1,77 @@
+#!/bin/bash
+#
+
+set -eu
+
+CHROOT=$1
+printf "customize30-configure: CHROOT=%s\n" ${CHROOT} >&2
+
+PACKAGES="
+iw
+curl
+locales
+locales-all
+wpasupplicant
+network-manager
+"
+
+for package in ${PACKAGES}; do
+    if [[ ! -f ${CHROOT}/var/lib/dpkg/info/${package}.list ]]; then
+        chroot ${CHROOT} /usr/bin/apt-get install -y ${package}
+        printf "customize30-configure: %s installed\n" ${package}
+    fi
+done
+
+#
+# Configure the WiFi interface.
+#
+chroot ${CHROOT} /usr/sbin/iw reg set US
+printf "customize30-configure: WiFi country set\n"
+
+#
+# Install docker
+#
+mkdir ${CHROOT}/opt/docker
+chmod 0710 ${CHROOT}/opt/docker
+ln -s /opt/docker ${CHROOT}/var/lib/docker
+chroot ${CHROOT} /usr/sbin/groupadd docker
+chroot ${CHROOT} /usr/sbin/usermod -aG docker roboquest
+mkdir -p ${CHROOT}/etc/systemd/system/docker.service.d
+cat << EOF > ${CHROOT}/etc/systemd/system/docker.service.d/override.conf
+[Service]
+ExecStart=
+ExecStart=/usr/bin/dockerd -H fd:// -H tcp://0.0.0.0:2375 --containerd=/run/containerd/containerd.sock
+EOF
+chroot ${CHROOT} /usr/bin/curl -fsSL -o /opt/docker/install-docker.sh http://get.docker.com/
+#chroot ${CHROOT} /bin/bash /opt/docker/install-docker.sh
+#chroot ${CHROOT} /usr/bin/docker volume create ros_logs
+#chroot ${CHROOT} /usr/bin/systemctl stop docker.service docker.socket
+printf "customize30-configure: docker partially installed. Run /opt/docker/install-docker.sh\n"
+printf " and create the ros_logs volume.\n"
+
+#
+# Set locale.
+#
+chroot ${CHROOT} /usr/sbin/update-locale LANG=en_US.UTF-8 LANGUAGE=en_US.UTF-8
+printf "customize30-configure: en_US set as the locale\n"
+
+#
+# Install VCS nm connection.
+#
+chroot ${CHROOT} /usr/bin/curl -o /etc/NetworkManager/system-connections/VCS.nmconnection https://github.com/billmania/roboquest_core/blob/main/scripts/VCS.nmconnection
+printf "customize30-configure: VCS WiFi configuration installed\n"
+
+#
+# Install the service for assigning a unique hostname.
+#
+chroot ${CHROOT} /usr/bin/curl -o /etc/systemd/system/roboquest_hostname.service https://raw.githubusercontent.com/billmania/roboquest_core/refs/heads/main/scripts/roboquest-hostname.service
+chroot ${CHROOT} /usr/bin/install -d --owner=roboquest --mode=0755 /usr/local/roboquest
+chroot ${CHROOT} /usr/bin/curl -o /usr/local/roboquest/hostname.bash https://raw.githubusercontent.com/billmania/roboquest_core/refs/heads/main/scripts/hostname.bash
+chroot ${CHROOT} chmod 0755 /usr/local/roboquest/hostname.bash
+chroot ${CHROOT} /usr/bin/systemctl enable roboquest_hostname.service
+printf "customize30-configure: roboquest_hostname.service installed\n"
+
+#
+# Add the Roboquest persist directory tree.
+#
+chroot ${CHROOT} /usr/bin/install -d --owner=roboquest --mode=0755 /opt/persist
