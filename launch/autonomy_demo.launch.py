@@ -28,7 +28,7 @@ def generate_launch_description():
 
     use_lidar_arg = DeclareLaunchArgument(
         'use_lidar',
-        default_value='false',
+        default_value='true',
         description='Launch RP LiDAR node'
     )
 
@@ -109,11 +109,80 @@ def generate_launch_description():
             ],
             output='both'
         ),
+        DeclareLaunchArgument(
+            'turn_speed', default_value='0.6',
+            description='Turn rate in radians per second'),
+        DeclareLaunchArgument(
+            'move_speed', default_value='0.2',
+            description='Linear rate in meters per second'),
+        DeclareLaunchArgument(
+            'move_period', default_value='0.1',
+            description='Seconds per logic loop'),
+        DeclareLaunchArgument(
+            'max_search_time', default_value='12.0',
+            description='Seconds to spend searching for a tag'),
+        DeclareLaunchArgument(
+            'max_tag_distance_m', default_value='5.0',
+            description='Max meters to a detectable tag'),
+        DeclareLaunchArgument(
+            'max_tag_bearing_rad', default_value='0.7854',
+            description='Max radians off dead ahead for a detectable tag'),
+        DeclareLaunchArgument(
+            'max_tag_lost_s', default_value='0.5',
+            description='Max seconds a tag can be lost after detection'),
+        DeclareLaunchArgument(
+            'obstacle_close_enough', default_value='0.2',
+            description='Minimum distance in meters to approach a tag'),
+        DeclareLaunchArgument(
+            'ignore_ranges', default_value='1',
+            description='Ignore this many nearest ranges'),
+        DeclareLaunchArgument(
+            'mean_ranges', default_value='3',
+            description='Average this many nearest ranges'),
+        DeclareLaunchArgument(
+            'tag_trans_trim', default_value='0.0',
+            description='Add this value to tag range'),
+        DeclareLaunchArgument(
+            'tag_trans_factor', default_value='1.0',
+            description='Multiply tag range by this value'),
+        DeclareLaunchArgument(
+            'tag_close_enough', default_value='0.5',
+            description='Distance to tag in meters'),
+        DeclareLaunchArgument(
+            'avoidance_cycles', default_value='15',
+            description='Move ahead this many logic loops'),
+        DeclareLaunchArgument(
+            'ahead_angle_deg', default_value='10',
+            description='Degrees of FOV considered ahead'),
+        DeclareLaunchArgument(
+            'side_angle_deg', default_value='30',
+            description='Degress beyond ahead'),
         Node(
             package=package_name,
             executable='navigator.py',
             name='navigator',
             namespace='',
+            parameters=[{
+                'turn_speed': LaunchConfiguration('turn_speed'),
+                'move_speed': LaunchConfiguration('move_speed'),
+                'move_period': LaunchConfiguration('move_period'),
+                'max_search_time': LaunchConfiguration('max_search_time'),
+                'max_tag_distance_m':
+                    LaunchConfiguration('max_tag_distance_m'),
+                'max_tag_bearing_rad':
+                    LaunchConfiguration('max_tag_bearing_rad'),
+                'max_tag_lost_s': LaunchConfiguration('max_tag_lost_s'),
+                'obstacle_close_enough':
+                    LaunchConfiguration('obstacle_close_enough'),
+                'ignore_ranges': LaunchConfiguration('ignore_ranges'),
+                'mean_ranges': LaunchConfiguration('mean_ranges'),
+                'tag_trans_trim': LaunchConfiguration('tag_trans_trim'),
+                'tag_trans_factor': LaunchConfiguration('tag_trans_factor'),
+                'tag_close_enough': LaunchConfiguration('tag_close_enough'),
+                'avoidance_cycles': LaunchConfiguration('avoidance_cycles'),
+                'ahead_angle_deg': LaunchConfiguration('ahead_angle_deg'),
+                'side_angle_deg': LaunchConfiguration('side_angle_deg'),
+            }],
             output='both'
         ),
         robot_state_publisher,

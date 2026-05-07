@@ -1,0 +1,48 @@
+#
+# Description of the target hardware.
+#
+device:
+  layer: rpi4-rq
+  hostname: rq-lidar-april
+  user1: roboquest
+  user1pass: OneLow4$
+
+#
+# Control how the image is built.
+#
+image:
+  layer: rq-partitions
+  boot_part_size: 512M
+  root_part_size: 7G
+  opt_part_size: 9G
+  name: rq-lidar-april
+
+#
+# Debian packages to be automatically installed into the root filesystem.
+# None of the image customization process depends on these packages.
+#
+packages:
+  - vim
+  - git
+  - python3-docker
+  - python3-serial
+  - minicom
+  - i2c-tools
+  - network-manager
+  - raspi-utils-core
+  - lsof
+  - usbutils
+  - apt-transport-https
+  - rpicam-apps
+
+#
+# Set the locale stuff.
+#
+locale:
+  timezone: America/LosAngeles
+
+#
+# Layers to be included.
+#
+layer:
+  base: trixie-minbase

@@ -1,13 +1,22 @@
 #!/usr/bin/env python3
 
-"""Follow a path using APRIL tags as the waypoints."""
+"""Follow a path.
 
-from math import pi
+Use the camera and APRIL tags as the waypoints of the
+path. Use the LiDAR to detect _obstacles.
+"""
+
+from enum import Enum
+from math import atan2, degrees, isinf, isnan
+from sys import exit as sys_exit
 from time import time
-from typing import List, Union
+from traceback import print_exc
+from typing import List, Tuple, Union
 
 from geometry_msgs.msg import TransformStamped
 from geometry_msgs.msg import TwistStamped
+
+from rcl_interfaces.msg import SetParametersResult
 
 import rclpy
 import rclpy.logging
@@ -15,18 +24,26 @@ from rclpy.node import Node
 
 from rq_msgs.srv import Control
 
+from sensor_msgs.msg import LaserScan
+
 from tf2_msgs.msg import TFMessage
 
-CLOSE_ENOUGH = 10
+PERSIST_DIR = (
+    '/usr/src/ros2ws/install'
+    '/roboquest_addons/share/roboquest_addons'
+    '/persist'
+)
+WAYPOINT_FILE = PERSIST_DIR + '/tags/waypoints.txt'
 
-TURN_SPEED = 0.5  # radians per second
-MOVE_SPEED = 0.1  # meters per second
-MOVE_PERIOD = 0.1  # move update period in seconds
-MAX_RUNTIME = 300.0  # in seconds
-MAX_ROTATE_TIME = int((2 * pi) / TURN_SPEED) + 1
-MIN_X = 0.05  # threshold for turning in meters
-MIN_Z = 0.5   # no closer than these meters
-WAYPOINT_FILE = '/opt/persist/tags/waypoints.txt'
+
+class State(Enum):
+    """Specify the robot state."""
+
+    START = 0
+    AVOIDING = 2  # adjusting motion to avoid obstacle(s)
+    PURSUING = 3  # moving toward the detected tag
+    SEARCHING = 4  # searching for the tag
+    DONE = 6
 
 
 class Navigation(Node):
@@ -46,8 +63,7 @@ class Navigation(Node):
         Loop through the tags in order.
 
         If the current tag is detected, by appearing in a TF message, set the
-        TwistStamped attributes to move toward it. Upon moving to within
-        CLOSE_ENOUGH of the current tag, proceed to the next tag.
+        TwistStamped attributes to move toward it.
 
         If the current tag isn't detected, execute the find_tag() method. If
         it's not found, proceed to the next tag.
@@ -55,35 +71,141 @@ class Navigation(Node):
         super().__init__('navigation')
 
         self._log = self.get_logger()
+        self._setup_parameters()
+        self._state = State.START
         self._twist = TwistStamped()
         self._control_request = Control.Request()
         self._control_future = None
         self._control_finished = False
-        self._rotation_start = None
+        self._searching_start = None
+        self._max_obstacle_range = 25.0  # greatest possible LiDAR range
+        self._obstacles = {
+            'ahead': None,
+            'left': None,
+            'right': None
+        }
+        self._avoidance_cycles = self._parameters['avoidance_cycles'].value
+        self._fov_half_ahead = None
 
-        self._setup_timers()
         self._tags = self._get_tags()
-        self._current_tag = self._get_next_tag()
+        self._get_next_tag()
         self._setup_topics()
         self.context.on_shutdown(self.cleanup_cb)
         self._setup_motor_control()
-        self.set_motors('ON')
+        self._set_motors('ON')
 
+        if self._camera_frames():
+            self._set_state(State.SEARCHING)
+        else:
+            self._set_state(State.DONE)
+        self._setup_timers()
         self._log.info(
             'Navigator started'
         )
 
-    def _get_next_tag(self):
-        """Get the next tag in the list."""
-        try:
-            next_tag = self._tags.pop(0)
-            self._log.debug(
-                f'Looking for {next_tag}'
+    def _params_cb(self, updated_parameters) -> SetParametersResult:
+        """Update dynamic parameters."""
+        success = True
+
+        for parameter in updated_parameters:
+            try:
+                self._parameters[parameter.name] = parameter
+                self._log.info(
+                    f'Parameter {parameter.name}'
+                    f' updated to {self._parameters[parameter.name].value}'
+                )
+
+            except Exception as e:
+                self._log.warning(
+                    '_params_cb:'
+                    f' Exception {e}'
+                )
+                success = False
+                break
+
+        if success:
+            return SetParametersResult(successful=True)
+        else:
+            return SetParametersResult(successful=False)
+
+    def _setup_parameters(self) -> None:
+        """Get the parameters.
+
+        Retrieve the ROS parameters and return the collection
+        as a dictionary.
+        """
+        declarations = [
+            ('turn_speed', 0.6),
+            ('move_speed', 0.2),
+            ('move_period', 0.1),
+            ('max_search_time', 12.0),
+            ('max_tag_distance_m', 5.0),
+            ('max_tag_bearing_rad', 0.7854),
+            ('max_tag_lost_s', 0.5),
+            ('obstacle_close_enough', 0.2),
+            ('ignore_ranges', 1),
+            ('mean_ranges', 3),
+            ('tag_trans_trim', 0.0),
+            ('tag_trans_factor', 1.0),
+            ('tag_close_enough', 0.5),
+            ('avoidance_cycles', 15),
+            ('ahead_angle_deg', 10),
+            ('side_angle_deg', 30)
+        ]
+
+        self._parameters = {}
+        for declaration in declarations:
+            param_name = declaration[0]
+            param_value = declaration[1]
+            self.declare_parameter(param_name, param_value)
+
+            self._parameters[param_name] = self.get_parameter(param_name)
+            self._log.info(
+                f'Parameter {param_name}'
+                f' = {self._parameters[param_name].value}'
             )
-            return next_tag
+
+        self.add_on_set_parameters_callback(self._params_cb)
+
+    def _camera_frames(self) -> bool:
+        """Check if camera frames are published."""
+        return True
+
+    def _set_rates(self, linear: float = 0.0, angular: float = 0.0) -> None:
+        """Set the linear and angular rates."""
+        self._twist.twist.linear.x = linear
+        self._twist.twist.angular.z = angular
+
+    def _get_next_tag(self) -> None:
+        """Get the next tag in the list.
+
+        If there aren't any more tags self._tag['name']
+        is set to None. Otherwise the timestamp and
+        poofs_left are reset. range and bearing won't be
+        set until the tag is detected.
+        """
+        self._tag = {
+            'name': None,
+            'range': None,
+            'bearing': None,
+            'timestamp': None
+        }
+
+        try:
+            tag_name = self._tags.pop(0)
 
         except IndexError:
-            return None
+            self._log.info(
+                'No more tags'
+            )
+            return
+
+        else:
+            if tag_name != '':
+                self._log.info(
+                    f'Looking for {tag_name}'
+                )
+                self._tag['name'] = tag_name
 
     def _get_tags(self) -> List[str]:
         """Return an ordered list of tags.
@@ -123,7 +245,7 @@ class Navigation(Node):
         self._timers = []
 
         move_timer = self.create_timer(
-            timer_period_sec=MOVE_PERIOD,
+            timer_period_sec=self._parameters['move_period'].value,
             callback=self._move
         )
         self._timers.append(move_timer)
@@ -134,6 +256,12 @@ class Navigation(Node):
             TFMessage,
             'tf',
             self._tf_cb,
+            1
+        )
+        self._scan_sub = self.create_subscription(
+            LaserScan,
+            'scan',
+            self._scan_cb,
             1
         )
         self._cmd_vel_pub = self.create_publisher(
@@ -164,7 +292,7 @@ class Navigation(Node):
             'Connected to control_hat service'
         )
 
-    def set_motors(self, motor_state: str = 'OFF') -> None:
+    def _set_motors(self, motor_state: str = 'OFF') -> None:
         """Set the state of the motors."""
         if self._control_future:
             #
@@ -202,120 +330,464 @@ class Navigation(Node):
 
         self._control_future = None
 
+    def _estop(self):
+        """Stop everything."""
+        pass
+
+    def _searching(self):
+        """Search for the current tag."""
+        if self._searching_start:
+            if (
+                (time() - self._searching_start)
+                >= self._parameters['max_search_time'].value
+            ):
+                self._stop_rotating()
+                self._log.warning(
+                    'Tag not found'
+                )
+                self._get_next_tag()
+                if not self._tag['name']:
+                    self._set_state(State.DONE)
+
+                return
+
+        if self._tag['timestamp']:
+            self._log.debug(
+                f"Found tag {self._tag['name']}"
+            )
+            self._stop_rotating()
+            self._set_state(State.PURSUING)
+        else:
+            self._rotate_to_search()
+
+    def _pursuing(self):
+        """Move toward the tag.
+
+        Move to within self._parameters['tag_close_enough'] of the tag. The tag
+        will also be identified as an obstacle, so check the distance
+        to the tag before checking the distance to _obstacles.
+        """
+        tag_range = self._tag['range']
+        obstacle_range = min(
+            [
+                v for v in self._obstacles.values() if type(v) is float
+            ] + [self._max_obstacle_range]
+        )
+        self._log.debug(
+            '_pursuing:'
+            f' tag: {tag_range:0.3f}'
+            f' obstacle: {obstacle_range:0.3f}',
+            throttle_duration_sec=0.5
+        )
+        if type(tag_range) is not float:
+            self._log.warning(
+                '_pursuing: Missing tag range'
+            )
+            return
+
+        if tag_range <= self._parameters['tag_close_enough'].value:
+            self._log.debug(
+                'Close enough to tag'
+            )
+            # TODO: Add a state for "found the tag"
+            self._get_next_tag()
+            if self._tag['name']:
+                self._set_state(State.SEARCHING)
+            else:
+                self._set_state(State.DONE)
+            return
+
+        try:
+            if (
+                obstacle_range
+                <= self._parameters['obstacle_close_enough'].value
+            ):
+                self._log.debug(
+                    'Closed enough to obstacle'
+                )
+                self._set_state(State.AVOIDING)
+                return
+
+        except Exception as e:
+            self._log.debug(
+                f'_pursuing: exception {e}'
+            )
+
+        if (
+            (time() - self._tag['timestamp'])
+            >= self._parameters['max_tag_lost_s'].value
+        ):
+            self._log.warning(
+                f"Tag {self._tag['name']} lost"
+            )
+            self._tag['timestamp'] = None
+            self._tag['range'] = None
+            self._tag['bearing'] = None
+            self._set_state(State.SEARCHING)
+            return
+
+        # TODO: Handle un-updated range and bearing better
+        self._set_rates(
+            min(
+                1.0,
+                (
+                    (tag_range / self._parameters['max_tag_distance_m'].value)
+                    * self._parameters['move_speed'].value
+                )
+            ),
+            min(
+                1.0,
+                (
+                    (
+                        self._tag['bearing']
+                        / self._parameters['max_tag_bearing_rad'].value
+                    )
+                    * self._parameters['turn_speed'].value
+                )
+            )
+        )
+
+    def _avoiding(self):
+        """Move around obstacles.
+
+        Rotate away from the closest obstacle until all
+        three obstacle ranges are greater than
+        self._parameters['obstacle_close_enough'], then move forward for
+        AVOID_DISTANCE_M.
+        """
+        if not self._avoidance_cycles:
+            #
+            # Traveled adequate linear distance.
+            #
+            self._avoidance_cycles = self._parameters['avoidance_cycles'].value
+            self._set_state(State.SEARCHING)
+            return
+
+        if (
+            (not self._obstacles['left']
+             or (
+                 self._obstacles['left']
+                 > self._parameters['obstacle_close_enough'].value
+             ))
+            and (not self._obstacles['ahead']
+                 or (
+                     self._obstacles['ahead']
+                     > self._parameters['obstacle_close_enough'].value))
+            and (not self._obstacles['right']
+                 or (
+                     self._obstacles['right']
+                     > self._parameters['obstacle_close_enough'].value))
+        ):
+            #
+            # Rotated enough, now move forward.
+            #
+            self._set_rates(
+                self._parameters['move_speed'].value,
+                0.0
+            )
+            self._avoidance_cycles -= 1
+            return
+
+        if (
+            not self._obstacles['left']
+            or (self._obstacles['right']
+                and self._obstacles['left'] > self._obstacles['right'])
+        ):
+            #
+            # The right obstacle is closer than the left, so
+            # rotate to the left.
+            #
+            self._set_rates(angular=self._parameters['turn_speed'].value)
+        else:
+            self._set_rates(angular=-self._parameters['turn_speed'].value)
+
+    def _done(self):
+        """Be done.
+
+        Stop the robot from moving and shutdown. publish()
+        (the suspenders) is called by this method because
+        _set_motors() (the belt) doesn't always succeed.
+        """
+        self._set_rates()
+        try:
+            self._cmd_vel_pub.publish(self._twist)
+
+        except Exception as e:
+            self._log.warning(
+                f'cmd_vel publish excepted {e}'
+            )
+
+        self._set_motors('OFF')
+        rclpy.spin_once(
+            node=self,
+            executor=None,
+            timeout_sec=1.0
+        )
+        rclpy.shutdown()
+
+    def _set_state(self, new_state: State = None) -> None:
+        """Set a new state."""
+        if new_state and self._state != new_state:
+            self._log.debug(
+                'Changing state'
+                f' from {self._state.name}'
+                f' to {new_state.name}'
+            )
+            self._state = new_state
+
     def _move(self):
         """Move the robot.
 
-        This method is expected to be called continuously,
-        regardless of any tag being detected.
+        This method is expected to be called periodically.
+        It uses self._state to select a specific behavior.
         """
         if not self._control_finished:
-            return
+            #
+            # The drive motors have not yet been enabled.
+            #
+            self._log.warning(
+                'Still waiting for motors to be enabled',
+                throttle_duration_sec=1.0
+            )
 
-        self._cmd_vel_pub.publish(self._twist)
+        if self._state == State.SEARCHING:
+            self._searching()
 
-    def _rotate_robot(self):
+        elif self._state == State.PURSUING:
+            self._pursuing()
+
+        elif self._state == State.AVOIDING:
+            self._avoiding()
+
+        elif self._state == State.DONE:
+            self._done()
+
+        else:
+            self._log.warning(
+                'Unrecognized state',
+                throttle_duration_sec=15.0
+            )
+
+        #
+        # publish() is called here in order to be called
+        # periodically, even when _set_rates() hasn't been
+        # called during this specific period.
+        #
+        try:
+            self._cmd_vel_pub.publish(self._twist)
+
+        except Exception as e:
+            self._log.warning(
+                f'cmd_vel publish excepted {e}'
+            )
+
+    def _rotate_to_search(self):
         """Rotate the robot.
 
         Rotate the robot, with no linear motion, to look for a
         tag.
         """
-        self._twist.twist.angular.z = TURN_SPEED
-        self._twist.twist.linear.x = 0.0
-        if not self._rotation_start:
-            self._rotation_start = time()
+        self._set_rates(angular=self._parameters['turn_speed'].value)
+        if not self._searching_start:
+            self._searching_start = time()
 
     def _stop_rotating(self):
         """Stop rotating the robot."""
-        self._twist.twist.angular.z = 0.0
-        self._twist.twist.linear.x = 0.0
-        self._rotation_start = None
+        self._set_rates()
+        self._searching_start = None
 
     def _get_detected_tag(
        self,
        transforms: TFMessage) -> Union[TransformStamped, None]:
-        """Return the detected tag."""
+        """Return the detected tag.
+
+        At any time, the robot is searching for a specific tag. This
+        method returns a "detected" tag if it matches the tag wanted
+        by the robot.
+        """
         if not transforms:
             return None
 
         for transform in transforms:
-            if transform.child_frame_id == self._current_tag:
+            if transform.child_frame_id == self._tag['name']:
                 return transform
 
         return None
 
+    def _obstacle_distance(
+         self,
+         range_series: List[float]) -> float:
+        """Determine the distance to the nearest obstacle."""
+        min_ranges = [
+            point for point in range_series
+            if not isinf(point) and not isnan(point)
+        ]
+        ranges = (
+            sorted(min_ranges)
+            [self._parameters['ignore_ranges'].value:]
+            [:self._parameters['mean_ranges'].value]
+        )
+        if len(ranges) > 0:
+            return sum(ranges) / len(ranges)
+        else:
+            return None
+
+    def _get_fov_points(
+        self,
+        degrees_per_point: float,
+        ahead_angle_deg: int,
+        side_angle_deg: int
+       ) -> Tuple[int, int]:
+        """Calculate the four FOV edges.
+
+        Using ahead_angle_deg and side_angle_deg calculate
+        the length of half of the ahead FOV and the length
+        of a full side FOV.
+        """
+        half_ahead_points = round((ahead_angle_deg // 2) / degrees_per_point)
+        side_points = round(side_angle_deg / degrees_per_point)
+        return (
+            half_ahead_points,
+            side_points
+        )
+
+    def _scan_cb(self, msg):
+        """Handle a received LiDAR message.
+
+        Determine the distance to any obstacles ahead or to the
+        sides of the robot.
+
+        The RPLiDAR has a triangle on the top, which points forward
+        (aligned with the robot's positive X axis. The LiDAR range
+        point aligned with that triangle is "0". The points then
+        progress as a positive rotation around the robot's Z axis.
+
+        As a result, the LiDAR's four most forward-pointing range
+        points are 1, 0, 719, and 718.
+        """
+        if not self._fov_half_ahead:
+            try:
+                self._max_obstacle_range = msg.range_max
+                self._log.debug(
+                    f'Range min: {msg.range_min:0.3f}'
+                    ', Range max:'
+                    f' {self._max_obstacle_range:0.3f}'
+                )
+                self._fov_half_ahead, self._fov_side = self._get_fov_points(
+                    degrees(msg.angle_increment),
+                    self._parameters['ahead_angle_deg'].value,
+                    self._parameters['side_angle_deg'].value
+                )
+
+            except Exception as e:
+                self._log.warning(
+                    f'_scan_cb 1 excepted {e}'
+                )
+                return
+
+            self._log.debug(
+                'FOV slices'
+                f' Ahead :{self._fov_half_ahead} + -{self._fov_half_ahead}:'
+                f', Left {self._fov_half_ahead}'
+                f':{self._fov_half_ahead+self._fov_side}'
+                f', Right {-(self._fov_half_ahead+self._fov_side)}:'
+                f'{-self._fov_half_ahead}'
+            )
+
+        try:
+            self._obstacles['ahead'] = self._obstacle_distance(
+                msg.ranges[
+                    :self._fov_half_ahead
+                ] +
+                msg.ranges[
+                    -self._fov_half_ahead:
+                ]
+            )
+
+            self._obstacles['left'] = self._obstacle_distance(
+                msg.ranges[
+                    self._fov_half_ahead:self._fov_half_ahead+self._fov_side
+                ]
+            )
+
+            self._obstacles['right'] = self._obstacle_distance(
+                msg.ranges[
+                    -(self._fov_half_ahead+self._fov_side):
+                    -self._fov_half_ahead
+                ]
+            )
+
+        except Exception as e:
+            self._log.warning(
+                f'_scan_cb 2 excepted {e}'
+                f' {print_exc()}'
+            )
+            return
+
+#         self._log.debug(
+#             'Obstacles:'
+#             f" {self._obstacles['left']:0.3f}"
+#             f" {self._obstacles['ahead']:0.3f}"
+#             f" {self._obstacles['right']:0.3f}",
+#             throttle_duration_sec=0.5
+#         )
+
     def _tf_cb(self, msg):
         """Handle a received TF message.
 
-        It controls the duration of rotation to find a tag. When
-        maximum rotation time is reached, rotation will be stopped.
-        If no tag is detected, the method returns. If any tag is
-        detected, then a check is made for the current tag.
+        Update the range and bearing to the tag, when it's detected.
         """
+        #
+        # Try to detect the current APRIL tag.
+        #
         detected_tag = self._get_detected_tag(msg.transforms)
 
-        if not detected_tag and not self._rotation_start:
-            self._log.debug('Starting rotation to find a tag')
-            self._rotate_robot()
-            return
-
-        if not detected_tag and self._rotation_start:
-            if (time() - self._rotation_start) >= MAX_ROTATE_TIME:
-                self._stop_rotating()
-                self._log.warn(
-                    'Maximum rotation time reached.'
-                    f' Failed to find tag {self._current_tag}'
-                )
-
-                self._current_tag = self._get_next_tag()
-                if not self._current_tag:
-                    self._log.warn(
-                        'No more tags to find'
+        if detected_tag:
+            try:
+                if not (
+                    self._parameters['obstacle_close_enough'].value
+                    < detected_tag.transform.translation.z <
+                    self._parameters['max_tag_distance_m'].value
+                ):
+                    self._log.warning(
+                        '_tf_cb: translation.z out of range at'
+                        f' {detected_tag.transform.translation.z:0.3f}'
                     )
-                    self._begin_shutdown()
+                    return
 
-            return
-
-        if detected_tag and self._rotation_start:
-            self._log.debug('Stopping rotation')
-            self._stop_rotating()
-
-        self._log.debug(
-            f'Received tf at {detected_tag.header.stamp.sec}'
-            f' {detected_tag.child_frame_id}'
-            f' x:{detected_tag.transform.translation.x:0.3f}'
-            f', z:{detected_tag.transform.translation.z:0.3f}',
-            throttle_duration_sec=1.0
-        )
-
-        if abs(detected_tag.transform.translation.x) > MIN_X:
-            if detected_tag.transform.translation.x < 0.0:
-                # TURN_LEFT
-                self._twist.twist.angular.z = TURN_SPEED
-            else:
-                # TURN_RIGHT
-                self._twist.twist.angular.z = -TURN_SPEED
-        else:
-            self._twist.twist.angular.z = 0.0
-
-        if detected_tag.transform.translation.z > MIN_Z:
-            self._twist.twist.linear.x = MOVE_SPEED
-        else:
-            self._twist.twist.linear.x = 0.0
-            self._current_tag = self._get_next_tag()
-            if not self._current_tag:
-                self._log.info(
-                    'Found last tag'
+            except Exception as e:
+                self._log.warn(
+                    f'_tf_cb1 exception: {e}'
                 )
-                self._begin_shutdown()
+                return
 
-    def _begin_shutdown(self) -> None:
-        """Prepare for the node to be shutdown."""
-        self._log.warn(
-            'Preparing to shutdown'
-        )
-        self.cleanup_cb()
-        self.destroy_node()
-        rclpy.shutdown()
+            try:
+                self._tag['range'] = (
+                    (
+                        detected_tag.transform.translation.z
+                        + self._parameters['tag_trans_trim'].value
+                    )
+                    * self._parameters['tag_trans_factor'].value
+                )
+                if (
+                    self._tag['range']
+                    <= self._parameters['obstacle_close_enough'].value
+                ):
+                    self._log.warning(
+                        '_tf_cb: translation.z = '
+                        f'{detected_tag.transform.translation.z:0.3f}'
+                    )
+                bearing_offset = detected_tag.transform.translation.x
+                self._tag['bearing'] = (
+                    -(atan2(bearing_offset, self._tag['range']))
+                )
+                self._tag['timestamp'] = time()
+
+            except Exception as e:
+                self._log.warn(
+                    f'_tf_cb2 exception: {e}'
+                )
+                return
 
     def cleanup_cb(self) -> None:
         """Cleanup quickly.
@@ -326,25 +798,10 @@ class Navigation(Node):
         self._log.info(
             'Executing cleanup_cb'
         )
+        self._set_rates()
         for timer in self._timers:
             timer.cancel()
-        self.set_motors('OFF')
-        self._control_client.destroy()
-
-        #
-        # In case the motor power isn't removed.
-        #
-        self._twist.twist.angular.z = 0.0
-        self._twist.twist.linear.x = 0.0
-        self._move()
-        self._move()
-
-        while self._control_future:
-            rclpy.spin_once(
-                node=self,
-                executor=None,
-                timeout_sec=0.1
-            )
+        self._set_motors('OFF')
 
         self._log.info(
             'Cleanup completed'
@@ -360,14 +817,22 @@ def main(args=None):
     )
 
     navigation = Navigation()
-    while rclpy.ok():
-        try:
-            rclpy.spin(
-                node=navigation
-            )
+    try:
+        rclpy.spin(navigation)
 
-        except Exception as e:
-            navigation._log.warn(f'spin() Exception: {e}')
+    except KeyboardInterrupt:
+        print(
+            'main: KeyboardInterrupt raised'
+        )
+
+    except Exception as e:
+        print(
+            f'main: {e} raised'
+        )
+
+    finally:
+        navigation.destroy_node()
+        sys_exit(0)
 
 
 if __name__ == '__main__':
