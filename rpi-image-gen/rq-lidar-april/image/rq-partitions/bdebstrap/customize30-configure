@@ -29,11 +29,13 @@ chroot ${CHROOT} /usr/sbin/iw reg set US
 printf "customize30-configure: WiFi country set\n"
 
 #
-# Install docker
+# Install docker and adjust containerd
 #
 chroot ${CHROOT} /usr/sbin/groupadd docker
 chroot ${CHROOT} /usr/bin/install -d --owner=root --group docker --mode=0750 /opt/docker
 chroot ${CHROOT} ln -s /opt/docker /var/lib/docker
+chroot ${CHROOT} /usr/bin/install -d --owner=root --group root --mode=0700 /opt/containerd/data
+chroot ${CHROOT} sed -i -e 's|^#root = "/var/lib/containerd$"|root = "/opt/containerd/data"|' /etc/containerd/config.toml
 chroot ${CHROOT} /usr/sbin/usermod -aG docker roboquest
 chroot ${CHROOT} /usr/bin/install -d --owner=root --group root --mode=0755 /etc/systemd/system/docker.service.d
 
