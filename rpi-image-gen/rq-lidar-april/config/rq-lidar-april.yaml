@@ -39,7 +39,7 @@ packages:
 # Set the locale stuff.
 #
 locale:
-  timezone: America/LosAngeles
+  timezone: America/Los_Angeles
 
 #
 # Layers to be included.

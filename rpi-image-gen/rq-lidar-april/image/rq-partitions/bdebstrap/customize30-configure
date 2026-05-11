@@ -29,25 +29,44 @@ chroot ${CHROOT} /usr/sbin/iw reg set US
 printf "customize30-configure: WiFi country set\n"
 
 #
-# Install docker
+# Install docker and adjust containerd
 #
-mkdir ${CHROOT}/opt/docker
-chmod 0710 ${CHROOT}/opt/docker
-ln -s /opt/docker ${CHROOT}/var/lib/docker
 chroot ${CHROOT} /usr/sbin/groupadd docker
+chroot ${CHROOT} /usr/bin/install -d --owner=root --group docker --mode=0750 /opt/docker
+chroot ${CHROOT} ln -s /opt/docker /var/lib/docker
+chroot ${CHROOT} /usr/bin/install -d --owner=root --group root --mode=0700 /opt/containerd/data
+chroot ${CHROOT} sed -i -e 's|^#root = "/var/lib/containerd$"|root = "/opt/containerd/data"|' /etc/containerd/config.toml
 chroot ${CHROOT} /usr/sbin/usermod -aG docker roboquest
-mkdir -p ${CHROOT}/etc/systemd/system/docker.service.d
+chroot ${CHROOT} /usr/bin/install -d --owner=root --group root --mode=0755 /etc/systemd/system/docker.service.d
+
 cat << EOF > ${CHROOT}/etc/systemd/system/docker.service.d/override.conf
 [Service]
 ExecStart=
 ExecStart=/usr/bin/dockerd -H fd:// -H tcp://0.0.0.0:2375 --containerd=/run/containerd/containerd.sock
 EOF
-chroot ${CHROOT} /usr/bin/curl -fsSL -o /opt/docker/install-docker.sh http://get.docker.com/
-#chroot ${CHROOT} /bin/bash /opt/docker/install-docker.sh
-#chroot ${CHROOT} /usr/bin/docker volume create ros_logs
-#chroot ${CHROOT} /usr/bin/systemctl stop docker.service docker.socket
-printf "customize30-configure: docker partially installed. Run /opt/docker/install-docker.sh\n"
-printf " and create the ros_logs volume.\n"
+/usr/bin/curl -fsSL -o ${CHROOT}/opt/docker/install-docker.sh http://get.docker.com/
+chmod 0755 ${CHROOT}/opt/docker/install-docker.sh
+
+cat << EOF > ${CHROOT}/etc/systemd/system/docker-install.service
+[Unit]
+Description=Install docker and create ros_logs
+After=network.target
+ConditionPathExists=!/opt/docker/docker-install-done
+
+[Service]
+User=root
+Group=docker
+Type=oneshot
+ExecStart=/opt/docker/install-docker.sh
+ExecStart=/usr/bin/docker volume create ros_logs
+ExecStartPost=/usr/bin/touch /opt/docker/docker-install-done
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+EOF
+chroot ${CHROOT} /usr/bin/systemctl --root=/ enable docker-install.service
+printf "customize30-configure: docker installation setup for first boot\n"
 
 #
 # Set locale.
@@ -68,10 +87,12 @@ chroot ${CHROOT} /usr/bin/curl -o /etc/systemd/system/roboquest_hostname.service
 chroot ${CHROOT} /usr/bin/install -d --owner=roboquest --mode=0755 /usr/local/roboquest
 chroot ${CHROOT} /usr/bin/curl -o /usr/local/roboquest/hostname.bash https://raw.githubusercontent.com/billmania/roboquest_core/refs/heads/main/scripts/hostname.bash
 chroot ${CHROOT} chmod 0755 /usr/local/roboquest/hostname.bash
-chroot ${CHROOT} /usr/bin/systemctl enable roboquest_hostname.service
+chroot ${CHROOT} /usr/bin/systemctl --root=/ enable roboquest_hostname.service
 printf "customize30-configure: roboquest_hostname.service installed\n"
 
 #
 # Add the Roboquest persist directory tree.
 #
 chroot ${CHROOT} /usr/bin/install -d --owner=roboquest --mode=0755 /opt/persist
+chroot ${CHROOT} /usr/bin/install -d --owner=roboquest --mode=0755 /opt/persist/tags
+chroot ${CHROOT} /usr/bin/install -d --owner=roboquest --mode=0755 /opt/persist/i2c
