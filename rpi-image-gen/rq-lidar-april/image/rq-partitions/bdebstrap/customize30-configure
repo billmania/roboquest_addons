@@ -94,3 +94,5 @@ printf "customize30-configure: roboquest_hostname.service installed\n"
 # Add the Roboquest persist directory tree.
 #
 chroot ${CHROOT} /usr/bin/install -d --owner=roboquest --mode=0755 /opt/persist
+chroot ${CHROOT} /usr/bin/install -d --owner=roboquest --mode=0755 /opt/persist/tags
+chroot ${CHROOT} /usr/bin/install -d --owner=roboquest --mode=0755 /opt/persist/i2c
