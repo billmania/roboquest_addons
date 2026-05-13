@@ -35,7 +35,6 @@ chroot ${CHROOT} /usr/sbin/groupadd docker
 chroot ${CHROOT} /usr/bin/install -d --owner=root --group docker --mode=0750 /opt/docker
 chroot ${CHROOT} ln -s /opt/docker /var/lib/docker
 chroot ${CHROOT} /usr/bin/install -d --owner=root --group root --mode=0700 /opt/containerd/data
-chroot ${CHROOT} sed -i -e 's|^#root = "/var/lib/containerd$"|root = "/opt/containerd/data"|' /etc/containerd/config.toml
 chroot ${CHROOT} /usr/sbin/usermod -aG docker roboquest
 chroot ${CHROOT} /usr/bin/install -d --owner=root --group root --mode=0755 /etc/systemd/system/docker.service.d
 
@@ -59,6 +58,7 @@ Group=docker
 Type=oneshot
 ExecStart=/opt/docker/install-docker.sh
 ExecStart=/usr/bin/docker volume create ros_logs
+ExecStart=sed -i -e 's|^#root = "/var/lib/containerd"$|root = "/opt/containerd/data"|' /etc/containerd/config.toml
 ExecStartPost=/usr/bin/touch /opt/docker/docker-install-done
 RemainAfterExit=yes
 
@@ -96,3 +96,5 @@ printf "customize30-configure: roboquest_hostname.service installed\n"
 chroot ${CHROOT} /usr/bin/install -d --owner=roboquest --mode=0755 /opt/persist
 chroot ${CHROOT} /usr/bin/install -d --owner=roboquest --mode=0755 /opt/persist/tags
 chroot ${CHROOT} /usr/bin/install -d --owner=roboquest --mode=0755 /opt/persist/i2c
+chroot ${CHROOT} /usr/bin/install -d --owner=roboquest --mode=0755 /opt/persist/nodes
+chroot ${CHROOT} /usr/bin/install -d --owner=roboquest --mode=0755 /opt/persist/calibration
