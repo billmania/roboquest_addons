@@ -19,7 +19,7 @@ image:
 
 #
 # Debian packages to be automatically installed into the root filesystem.
-# None of the image customization process depends on these packages.
+# Some of the image customization process depends on some of these packages.
 #
 packages:
   - vim
