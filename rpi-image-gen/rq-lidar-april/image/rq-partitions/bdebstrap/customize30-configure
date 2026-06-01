@@ -7,6 +7,7 @@ CHROOT=$1
 printf "customize30-configure: CHROOT=%s\n" ${CHROOT} >&2
 
 PACKAGES="
+git
 iw
 curl
 locales
@@ -21,6 +22,14 @@ for package in ${PACKAGES}; do
         printf "customize30-configure: %s installed\n" ${package}
     fi
 done
+
+#
+# Identify the version.
+#
+chroot ${CHROOT} /usr/bin/install -d --owner=roboquest --mode=0755 /opt/roboquest
+cat <<EOF > ${CHROOT}/opt/roboquest/version
+rq-lidar-april v3
+EOF
 
 #
 # Configure the WiFi interface.
@@ -77,9 +86,15 @@ chroot ${CHROOT} /usr/sbin/update-locale LANG=en_US.UTF-8 LANGUAGE=en_US.UTF-8
 printf "customize30-configure: en_US set as the locale\n"
 
 #
-# Install VCS nm connection.
+# Install VCS nm connection and disable systemd-networkd.
 #
-chroot ${CHROOT} /usr/bin/curl -o /etc/NetworkManager/system-connections/VCS.nmconnection https://github.com/billmania/roboquest_core/blob/main/scripts/VCS.nmconnection
+chroot ${CHROOT} /usr/bin/curl -o /etc/NetworkManager/system-connections/VCS.nmconnection https://raw.githubusercontent.com/billmania/roboquest_core/refs/heads/116-add-configuration-for-csi-arducam/scripts/VCS.nmconnection
+chmod 0600 ${CHROOT}/etc/NetworkManager/system-connections/VCS.nmconnection
+
+sed -i -e "s/<UUID>/$(/usr/bin/uuidgen)/" -e "s/<TIMESTAMP>/$(/usr/bin/date +%s)/" -e "/^#.*$/d" ${CHROOT}/etc/NetworkManager/system-connections/VCS.nmconnection
+
+chroot ${CHROOT} /usr/bin/systemctl --root=/ disable systemd-networkd.service
+
 printf "customize30-configure: VCS WiFi configuration installed\n"
 
 #
@@ -100,3 +115,10 @@ chroot ${CHROOT} /usr/bin/install -d --owner=roboquest --mode=0755 /opt/persist/
 chroot ${CHROOT} /usr/bin/install -d --owner=roboquest --mode=0755 /opt/persist/i2c
 chroot ${CHROOT} /usr/bin/install -d --owner=roboquest --mode=0755 /opt/persist/nodes
 chroot ${CHROOT} /usr/bin/install -d --owner=roboquest --mode=0755 /opt/persist/calibration
+printf "customize30-configure: persist directories added\n"
+
+#
+# Add support for the Roboquest repositories
+#
+chroot ${CHROOT} /usr/bin/install -d --owner=roboquest --mode=0755 /opt/projects/roboquest/ros2ws/src
+printf "customize30-configure: Roboquest repo location setup\n"

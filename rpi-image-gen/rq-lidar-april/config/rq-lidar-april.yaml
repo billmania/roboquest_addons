@@ -23,7 +23,6 @@ image:
 #
 packages:
   - vim
-  - git
   - python3-docker
   - python3-serial
   - minicom

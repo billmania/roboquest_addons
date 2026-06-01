@@ -48,4 +48,3 @@ UUID=${BOOT_UUID} /boot/firmware  vfat rw,noatime,errors=remount-ro 0 2
 EOF
 
 sed -i "s|root=\([^ ]*\)|root=UUID=${ROOT_UUID}|" ${IGconf_target_path}/boot/firmware/cmdline.txt
-#sed -i "s|$| init=/bin/bash|" ${IGconf_target_path}/boot/firmware/cmdline.txt
