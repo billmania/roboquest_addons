@@ -524,6 +524,7 @@ class Navigation(Node):
             timeout_sec=1.0
         )
         rclpy.shutdown()
+        sys_exit(0)
 
     def _set_state(self, new_state: State = None) -> None:
         """Set a new state."""
@@ -806,6 +807,7 @@ class Navigation(Node):
         self._log.info(
             'Cleanup completed'
         )
+        sys_exit(0)
 
 
 def main(args=None):
