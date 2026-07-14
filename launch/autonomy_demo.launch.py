@@ -1,7 +1,10 @@
 """Roboquest Autonomy Demo launch file."""
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
+from launch.actions import EmitEvent, RegisterEventHandler
 from launch.conditions import IfCondition
+from launch.event_handlers import OnProcessExit
+from launch.events import Shutdown
 from launch.substitutions import (
         Command,
         LaunchConfiguration,
@@ -61,6 +64,46 @@ def generate_launch_description():
         package='joint_state_publisher',
         executable='joint_state_publisher',
         name='joint_state_publisher'
+    )
+
+    navigator_node = Node(
+        package=package_name,
+        executable='navigator.py',
+        name='navigator',
+        namespace='',
+        parameters=[{
+            'turn_speed': LaunchConfiguration('turn_speed'),
+            'move_speed': LaunchConfiguration('move_speed'),
+            'move_period': LaunchConfiguration('move_period'),
+            'max_search_time': LaunchConfiguration('max_search_time'),
+            'max_tag_distance_m':
+                LaunchConfiguration('max_tag_distance_m'),
+            'max_tag_bearing_rad':
+                LaunchConfiguration('max_tag_bearing_rad'),
+            'max_tag_lost_s': LaunchConfiguration('max_tag_lost_s'),
+            'obstacle_close_enough':
+                LaunchConfiguration('obstacle_close_enough'),
+            'ignore_ranges': LaunchConfiguration('ignore_ranges'),
+            'mean_ranges': LaunchConfiguration('mean_ranges'),
+            'tag_trans_trim': LaunchConfiguration('tag_trans_trim'),
+            'tag_trans_factor': LaunchConfiguration('tag_trans_factor'),
+            'tag_close_enough': LaunchConfiguration('tag_close_enough'),
+            'avoidance_cycles': LaunchConfiguration('avoidance_cycles'),
+            'ahead_angle_deg': LaunchConfiguration('ahead_angle_deg'),
+            'side_angle_deg': LaunchConfiguration('side_angle_deg'),
+        }],
+        output='both'
+    )
+
+    shutdown_on_exit = RegisterEventHandler(
+        OnProcessExit(
+            target_action=navigator_node,
+            on_exit=([
+                EmitEvent(
+                    event=Shutdown(reason='navigator.py exited')
+                )
+            ])
+        )
     )
 
     return LaunchDescription([
@@ -157,34 +200,8 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'side_angle_deg', default_value='30',
             description='Degress beyond ahead'),
-        Node(
-            package=package_name,
-            executable='navigator.py',
-            name='navigator',
-            namespace='',
-            parameters=[{
-                'turn_speed': LaunchConfiguration('turn_speed'),
-                'move_speed': LaunchConfiguration('move_speed'),
-                'move_period': LaunchConfiguration('move_period'),
-                'max_search_time': LaunchConfiguration('max_search_time'),
-                'max_tag_distance_m':
-                    LaunchConfiguration('max_tag_distance_m'),
-                'max_tag_bearing_rad':
-                    LaunchConfiguration('max_tag_bearing_rad'),
-                'max_tag_lost_s': LaunchConfiguration('max_tag_lost_s'),
-                'obstacle_close_enough':
-                    LaunchConfiguration('obstacle_close_enough'),
-                'ignore_ranges': LaunchConfiguration('ignore_ranges'),
-                'mean_ranges': LaunchConfiguration('mean_ranges'),
-                'tag_trans_trim': LaunchConfiguration('tag_trans_trim'),
-                'tag_trans_factor': LaunchConfiguration('tag_trans_factor'),
-                'tag_close_enough': LaunchConfiguration('tag_close_enough'),
-                'avoidance_cycles': LaunchConfiguration('avoidance_cycles'),
-                'ahead_angle_deg': LaunchConfiguration('ahead_angle_deg'),
-                'side_angle_deg': LaunchConfiguration('side_angle_deg'),
-            }],
-            output='both'
-        ),
+        navigator_node,
+        shutdown_on_exit,
         robot_state_publisher,
         joint_state_publisher
     ])
