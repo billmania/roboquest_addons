@@ -20,6 +20,7 @@ VERSION = '1'
 TIMEOUT_DEFAULT = 120.0
 IMAGES = ['rq_core_25.1rc3', 'rq_addons_4rc2']
 SERIAL_NUMBER_FILE = '/sys/firmware/devicetree/base/serial-number'
+WAYPOINTS_FILE = '/opt/persist/tags/waypoints.txt'
 NULL_CHAR = '\0'
 BUILD_IMAGES_URL = (
     'https://registry.q4excellence.com:5678/files/build_images.sh'
@@ -186,11 +187,20 @@ class AprilDemo(object):
             self._build_images()
 
     def _parse_waypoints(self, waypoints: List) -> List:
-        """Parse the list of waypoints."""
+        """Parse the list of waypoints.
+
+        Extract the waypoints from the command line argument
+        and use them to overwrite the content of the waypoints
+        file, so navigator.py can read them.
+        """
         logging.debug(
-            '_parse_waypoints called'
+            '_parse_waypoints called:'
+            f' {waypoints}'
         )
-        return waypoints.replace(' ', '').split(',')
+        with open(WAYPOINTS_FILE, 'w', encoding='ascii') as f:
+            for waypoint in waypoints.replace(' ', '').split(','):
+                if waypoint != '':
+                    f.write(waypoint + '\n')
 
     def _calculate_domain_id(self) -> str:
         """Calculate the unique ROS_DOMAIN_ID.
@@ -384,10 +394,7 @@ class AprilDemo(object):
 
         self._check_images(IMAGES)
 
-        self._waypoints = self._parse_waypoints(self._parsed_args.waypoints)
-        logging.info(
-            f'Waypoints: {self._waypoints}'
-        )
+        self._parse_waypoints(self._parsed_args.waypoints)
 
         if self._parsed_args.ros_domain_id != '':
             self._ros_domain_id = self._parsed_args.ros_domain_id
