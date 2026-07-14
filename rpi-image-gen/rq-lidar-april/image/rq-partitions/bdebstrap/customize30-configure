@@ -121,7 +121,7 @@ printf "customize30-configure: persist directories added\n"
 # Add support for the Roboquest repositories
 #
 chroot ${CHROOT} /usr/bin/install -d --owner=roboquest --mode=0755 /opt/projects/roboquest/ros2ws/src
-chroot ${CHROOT} /usr/bin/curl -o /home/roboquest/april_demo.py https://github.com/billmania/roboquest_addons/raw/refs/heads/24-provide-a-shell-script-to-demonstrate-the-april-tag-and-lidar-functionality/scripts/april_demo.py
-chown roboquest ${CHROOT}/home/roboquest/april_demo.py
+chroot ${CHROOT} /usr/bin/curl -o /home/roboquest/april_demo.py \
+    https://github.com/billmania/roboquest_addons/raw/refs/heads/main/scripts/april_demo.py
 chmod 0755 ${CHROOT}/home/roboquest/april_demo.py
 printf "customize30-configure: Roboquest repo location setup\n"
