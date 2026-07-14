@@ -14,7 +14,7 @@ git clone --branch 116-add-configuration-for-csi-arducam \
     https://github.com/billmania/roboquest_core.git
 git clone \
     https://github.com/billmania/rq_msgs.git
-git clone --branch 24-provide-a-shell-script-to-demonstrate-the-april-tag-and-lidar-functionality \
+git clone \
     https://github.com/billmania/roboquest_addons.git
 
 cd /opt/projects/roboquest/ros2ws

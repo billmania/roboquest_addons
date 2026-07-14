@@ -23,9 +23,8 @@ SERIAL_NUMBER_FILE = '/sys/firmware/devicetree/base/serial-number'
 WAYPOINTS_FILE = '/opt/persist/tags/waypoints.txt'
 NULL_CHAR = '\0'
 BUILD_IMAGES_URL = (
-    'https://github.com/billmania/roboquest_addons/raw/refs/heads'
-    '/24-provide-a-shell-script-to-demonstrate-the-april-tag-and-lidar-functionality'
-    '/scripts/build_images.sh'
+    'https://github.com/billmania/roboquest_addons'
+    '/raw/refs/heads/main/scripts/build_images.sh'
 )
 
 
