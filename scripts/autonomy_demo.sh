@@ -6,7 +6,9 @@ source /opt/ros/humble/setup.bash
 source install/setup.bash
 
 #
-# Define parameters with ros2 launch
+# Override the navigator.py node's default parameters with ros2 launch. This
+# mechanism will NOT override parameters defined in the parameter files
+# config/default_nav_params.yaml or persist/nav_params.yaml.
 #
 # ros2 launch roboquest_addons autonomy_demo.launch.py max_search_time:=20.0 move_speed:=0.2
 #

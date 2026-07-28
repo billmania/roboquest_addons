@@ -1,0 +1,22 @@
+/**:
+    ros__parameters:
+        #
+        # These parameter values override the defaults in navigator.py
+        # and any parameters passed to 'ros2 launch'.
+        #
+        turn_speed: 0.6               # radians per second
+        move_speed: 0.2               # meters per second
+        move_period: 0.1              # 1/move_period = Hertz
+        max_search_time: 12.0         # seconds
+        max_tag_distance_m: 5.0       # meters
+        max_tag_bearing_rad: 0.7854   # radians
+        max_tag_lost_s: 0.5           # seconds
+        obstacle_close_enough: 0.2    # meters
+        ignore_ranges: 1              # quantity of outliers to ignore
+        mean_ranges: 3                # quantity to average
+        tag_trans_trim: 0.0           # range meters to add
+        tag_trans_factor: 1.0         # range multiplier
+        tag_close_enough: 0.5         # meters
+        avoidance_cycles: 15          # move cycles
+        ahead_angle_deg: 10           # degrees left or right for ahead
+        side_angle_deg: 30            # degrees left or right of ahead
