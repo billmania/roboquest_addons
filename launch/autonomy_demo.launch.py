@@ -1,4 +1,8 @@
 """Roboquest Autonomy Demo launch file."""
+from pathlib import Path
+
+from ament_index_python.packages import get_package_share_directory
+
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.actions import EmitEvent, RegisterEventHandler
@@ -16,6 +20,18 @@ from launch_ros.actions import Node
 from launch_ros.descriptions import ComposableNode
 from launch_ros.parameter_descriptions import ParameterValue
 from launch_ros.substitutions import FindPackageShare
+
+PKG_SHARE_DIR = get_package_share_directory('roboquest_addons')
+NAV_PARAMS_FILE = (
+    PKG_SHARE_DIR +
+    '/persist' +
+    '/nav_params.yaml'
+)
+DEFAULT_NAV_PARAMS_FILE = (
+    PKG_SHARE_DIR +
+    '/config' +
+    '/default_nav_params.yaml'
+)
 
 
 def generate_launch_description():
@@ -40,6 +56,13 @@ def generate_launch_description():
          'config',
          'tags_36h11.yaml']
     )
+
+    if Path(NAV_PARAMS_FILE).exists():
+        nav_params_file = NAV_PARAMS_FILE
+    elif Path(DEFAULT_NAV_PARAMS_FILE).exists():
+        nav_params_file = DEFAULT_NAV_PARAMS_FILE
+    else:
+        nav_params_file = None
 
     robot_state_publisher = Node(
         package='robot_state_publisher',
@@ -71,27 +94,30 @@ def generate_launch_description():
         executable='navigator.py',
         name='navigator',
         namespace='',
-        parameters=[{
-            'turn_speed': LaunchConfiguration('turn_speed'),
-            'move_speed': LaunchConfiguration('move_speed'),
-            'move_period': LaunchConfiguration('move_period'),
-            'max_search_time': LaunchConfiguration('max_search_time'),
-            'max_tag_distance_m':
-                LaunchConfiguration('max_tag_distance_m'),
-            'max_tag_bearing_rad':
-                LaunchConfiguration('max_tag_bearing_rad'),
-            'max_tag_lost_s': LaunchConfiguration('max_tag_lost_s'),
-            'obstacle_close_enough':
-                LaunchConfiguration('obstacle_close_enough'),
-            'ignore_ranges': LaunchConfiguration('ignore_ranges'),
-            'mean_ranges': LaunchConfiguration('mean_ranges'),
-            'tag_trans_trim': LaunchConfiguration('tag_trans_trim'),
-            'tag_trans_factor': LaunchConfiguration('tag_trans_factor'),
-            'tag_close_enough': LaunchConfiguration('tag_close_enough'),
-            'avoidance_cycles': LaunchConfiguration('avoidance_cycles'),
-            'ahead_angle_deg': LaunchConfiguration('ahead_angle_deg'),
-            'side_angle_deg': LaunchConfiguration('side_angle_deg'),
-        }],
+        parameters=[
+            {
+                'turn_speed': LaunchConfiguration('turn_speed'),
+                'move_speed': LaunchConfiguration('move_speed'),
+                'move_period': LaunchConfiguration('move_period'),
+                'max_search_time': LaunchConfiguration('max_search_time'),
+                'max_tag_distance_m':
+                    LaunchConfiguration('max_tag_distance_m'),
+                'max_tag_bearing_rad':
+                    LaunchConfiguration('max_tag_bearing_rad'),
+                'max_tag_lost_s': LaunchConfiguration('max_tag_lost_s'),
+                'obstacle_close_enough':
+                    LaunchConfiguration('obstacle_close_enough'),
+                'ignore_ranges': LaunchConfiguration('ignore_ranges'),
+                'mean_ranges': LaunchConfiguration('mean_ranges'),
+                'tag_trans_trim': LaunchConfiguration('tag_trans_trim'),
+                'tag_trans_factor': LaunchConfiguration('tag_trans_factor'),
+                'tag_close_enough': LaunchConfiguration('tag_close_enough'),
+                'avoidance_cycles': LaunchConfiguration('avoidance_cycles'),
+                'ahead_angle_deg': LaunchConfiguration('ahead_angle_deg'),
+                'side_angle_deg': LaunchConfiguration('side_angle_deg'),
+            },
+            nav_params_file
+        ],
         output='both'
     )
 
