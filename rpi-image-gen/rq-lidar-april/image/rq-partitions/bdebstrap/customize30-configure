@@ -28,7 +28,7 @@ done
 #
 chroot ${CHROOT} /usr/bin/install -d --owner=roboquest --mode=0755 /opt/roboquest
 cat <<EOF > ${CHROOT}/opt/roboquest/version
-rq-lidar-april v4
+rq-lidar-april v5
 EOF
 
 #
@@ -115,6 +115,9 @@ chroot ${CHROOT} /usr/bin/install -d --owner=roboquest --mode=0755 /opt/persist/
 chroot ${CHROOT} /usr/bin/install -d --owner=roboquest --mode=0755 /opt/persist/i2c
 chroot ${CHROOT} /usr/bin/install -d --owner=roboquest --mode=0755 /opt/persist/nodes
 chroot ${CHROOT} /usr/bin/install -d --owner=roboquest --mode=0755 /opt/persist/calibration
+
+chroot ${CHROOT} /usr/bin/curl -o /opt/persist/nav_params.yaml \
+    https://raw.githubusercontent.com/billmania/roboquest_addons/refs/heads/main/config/default_nav_params.yaml
 printf "customize30-configure: persist directories added\n"
 
 #
