@@ -118,6 +118,8 @@ chroot ${CHROOT} /usr/bin/install -d --owner=roboquest --mode=0755 /opt/persist/
 
 chroot ${CHROOT} /usr/bin/curl -o /opt/persist/nav_params.yaml \
     https://raw.githubusercontent.com/billmania/roboquest_addons/refs/heads/main/config/default_nav_params.yaml
+chroot ${CHROOT} /usr/bin/curl -o /opt/persist/rq_camera0.yaml \
+    https://raw.githubusercontent.com/billmania/roboquest_core/refs/heads/main/config/rq_camera0.yaml
 printf "customize30-configure: persist directories added\n"
 
 #
@@ -127,4 +129,7 @@ chroot ${CHROOT} /usr/bin/install -d --owner=roboquest --mode=0755 /opt/projects
 chroot ${CHROOT} /usr/bin/curl -o /home/roboquest/april_demo.py \
     https://raw.githubusercontent.com/billmania/roboquest_addons/refs/heads/main/scripts/april_demo.py
 chmod 0755 ${CHROOT}/home/roboquest/april_demo.py
+chroot ${CHROOT} /usr/bin/curl -o /home/roboquest/cam_tool.py \
+    https://raw.githubusercontent.com/billmania/roboquest_core/refs/heads/116-add-configuration-for-csi-arducam/scripts/cam_tool.py
+chmod 0755 ${CHROOT}/home/roboquest/cam_tool.py
 printf "customize30-configure: Roboquest repo location setup\n"
