@@ -13,6 +13,8 @@ rm -rf roboquest_core rq_msgs roboquest_addons
 
 git clone \
     https://github.com/billmania/roboquest_addons.git
+git clone \
+    https://github.com/billmania/rq_msgs.git
 
 cd /opt/projects/roboquest/ros2ws
 docker system prune -f
