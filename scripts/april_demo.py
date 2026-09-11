@@ -8,6 +8,8 @@ Executed via an ssh terminal session on the robot.
 
 import argparse
 import logging
+from os import system as os_exec
+from pathlib import Path
 from subprocess import call as run_script
 from sys import exit as sys_exit
 from typing import List
@@ -16,15 +18,20 @@ import docker
 
 from requests.exceptions import ConnectionError as URLTimeoutError
 
-VERSION = '1'
+VERSION = '2'
 TIMEOUT_DEFAULT = 120.0
-IMAGES = ['rq_core_25.1rc3', 'rq_addons_4rc2']
+IMAGES = [
+    'rq_addons_4rc2'
+]
 SERIAL_NUMBER_FILE = '/sys/firmware/devicetree/base/serial-number'
-WAYPOINTS_FILE = '/opt/persist/tags/waypoints.txt'
+TAGS_DIR = '/opt/persist/tags'
+WAYPOINTS_FILE = TAGS_DIR + '/waypoints.txt'
 NULL_CHAR = '\0'
 BUILD_IMAGES_URL = (
-    'https://github.com/billmania/roboquest_addons'
-    '/raw/refs/heads/main/scripts/build_images.sh'
+    'https://raw.githubusercontent.com'
+    '/billmania/roboquest_addons/refs/heads'
+    '/36-update-april_demopy-and-build_imagessh-for-rq_core-v26'
+    '/scripts/build_images.sh'
 )
 
 
@@ -121,8 +128,20 @@ class AprilDemo(object):
             )
             sys_exit(3)
 
+    def _stop_roboquest(self):
+        """Stop the roboquest-updater service.
+
+        Shutdown the Roboquest application by stopping the
+        roboquest-updater systemd service. This will stop both
+        the rq_core and rq_ui docker containers.
+        """
+        logging.debug(
+            'Stopping the Roboquest application'
+        )
+        os_exec('systemctl stop roboquest-updater.service')
+
     def _kill_containers(self):
-        """Kill any running Roboquest containers."""
+        """Kill any running docker containers."""
         logging.debug(
             '_kill_containers called'
         )
@@ -130,11 +149,7 @@ class AprilDemo(object):
 
         for container in containers:
             try:
-                if container.name.find('rq_') == 0:
-                    logging.warning(
-                        f' Killing {container.short_id}'
-                    )
-                    container.kill()
+                container.kill()
 
             except docker.errors.APIError as e:
                 logging.error(
@@ -151,22 +166,26 @@ class AprilDemo(object):
         logging.debug(
             '_build_images called'
         )
+        build_images = Path('/tmp/build_images.sh')
+        if build_images.exists():
+            build_images.unlink()
+
         run_script([
             '/usr/bin/wget',
             '-O',
-            '/tmp/build_images.sh',
+            str(build_images),
             BUILD_IMAGES_URL
         ])
 
         run_script([
             '/bin/bash',
-            '/tmp/build_images.sh'
+            str(build_images)
         ])
 
     def _check_images(self, image_list: List = []):
         """Ensure the required images exist.
 
-        If the two images already exist locally, they won't be rebuilt.
+        If the demo images already exist locally, they won't be rebuilt.
         Otherwise, the _build_images() method will be called.
         """
         logging.debug(
@@ -179,7 +198,7 @@ class AprilDemo(object):
 
             except docker.errors.ImageNotFound:
                 image_missing = True
-                logging.warn(
+                logging.warning(
                     '_check_images:'
                     f' {image_name} not found'
                 )
@@ -198,6 +217,7 @@ class AprilDemo(object):
             '_parse_waypoints called:'
             f' {waypoints}'
         )
+        Path(TAGS_DIR).mkdir(parents=True, exist_ok=True)
         with open(WAYPOINTS_FILE, 'w', encoding='ascii') as f:
             for waypoint in waypoints.replace(' ', '').split(','):
                 if waypoint != '':
@@ -244,7 +264,7 @@ class AprilDemo(object):
         logging.debug(
             '_start_rq_core called'
         )
-        IMAGE_NAME = 'rq_core_25.1rc3'
+        IMAGE_NAME = 'registry.q4excellence.com:5678/rq_core'
         RQ_CORE = {
             'image_name': IMAGE_NAME,
             'devices': ['/dev/gpiomem:/dev/gpiomem:rwm',
@@ -388,10 +408,10 @@ class AprilDemo(object):
 
     def main(self):
         """Execute the steps in the demo."""
-        logging.debug(
-            'main called'
+        logging.info(
+            'Starting the demo'
         )
-        self._kill_containers()
+        self._stop_roboquest()
 
         self._check_images(IMAGES)
 
@@ -406,7 +426,6 @@ class AprilDemo(object):
         )
 
         self._rq_core = self._start_rq_core()
-
         self._rq_addons = self._start_rq_addons()
 
         for output_chunk in self._rq_addons.logs(stream=True, follow=True):
