@@ -1,0 +1,26 @@
+image_width: 1296
+image_height: 972
+camera_name: ov5647__base_soc_i2c0mux_i2c_1_ov5647_36_1296x972
+camera_matrix:
+  rows: 3
+  cols: 3
+  data: [1135.46227,    0.     ,  634.79832,
+            0.     , 1138.3873 ,  494.72898,
+            0.     ,    0.     ,    1.     ]
+distortion_model: plumb_bob
+distortion_coefficients:
+  rows: 1
+  cols: 5
+  data: [0.104835, -0.238478, 0.006183, 0.000571, 0.000000]
+rectification_matrix:
+  rows: 3
+  cols: 3
+  data: [1., 0., 0.,
+         0., 1., 0.,
+         0., 0., 1.]
+projection_matrix:
+  rows: 3
+  cols: 4
+  data: [1145.78088,    0.     ,  634.50837,    0.     ,
+            0.     , 1150.48389,  498.33692,    0.     ,
+            0.     ,    0.     ,    1.     ,    0.     ]
