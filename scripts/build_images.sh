@@ -2,7 +2,7 @@
 
 VERSION=2
 
-mkdir -p /opt/projects/roboquest/ros2ws
+mkdir -p /opt/projects/roboquest/ros2ws/src
 cd /opt/projects/roboquest/ros2ws
 
 wget -O Dockerfile.roboquest_addons \
